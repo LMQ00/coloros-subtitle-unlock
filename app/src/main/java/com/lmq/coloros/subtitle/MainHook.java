@@ -54,6 +54,7 @@ public class MainHook implements IXposedHookLoadPackage {
         hookAsrGlobalParser(lp.classLoader);
         hookWorkManagerListeners(lp.classLoader);
         hookMonthlyDto(lp.classLoader);
+        hookSubtitleLimitFlag(lp.classLoader);
     }
 
     private static boolean isLimitStatus(int code) {
@@ -77,7 +78,10 @@ public class MainHook implements IXposedHookLoadPackage {
                     new XC_MethodHook() {
                         @Override
                         protected void beforeHookedMethod(MethodHookParam param) {
+                            int from = (Integer) param.args[0];
                             int code = (Integer) param.args[1];
+                            String msg = (String) param.args[2];
+                            log("status from=" + from + " code=" + code + " msg=" + msg);
                             if (isLimitStatus(code)) {
                                 log("drop status code " + code + " @ engine dispatcher");
                                 param.setResult(null);
@@ -158,6 +162,23 @@ public class MainHook implements IXposedHookLoadPackage {
             } catch (Throwable t) {
                 log("hook " + cls + "#" + m + " failed: " + t);
             }
+        }
+    }
+
+    /** 字幕 WorkManager 的「已达上限」标志：强制为 false，避免后续状态码被忽略。 */
+    private static void hookSubtitleLimitFlag(ClassLoader cl) {
+        try {
+            XposedHelpers.findAndHookMethod(
+                    "com.coloros.accessibilityassistant.subtitle.g0", cl, "X",
+                    new XC_MethodHook() {
+                        @Override
+                        protected void afterHookedMethod(MethodHookParam param) {
+                            param.setResult(Boolean.FALSE);
+                        }
+                    });
+            log("hooked subtitle limit flag g0#X");
+        } catch (Throwable t) {
+            log("hook g0#X failed: " + t);
         }
     }
 

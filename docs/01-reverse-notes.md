@@ -120,6 +120,19 @@ com.coloros.accessibilityassistant（单进程）
 | `com.coloros.accessibilityassistant.subtitle.globalsummary.GlobalAsrWorkManager$e` | `onResultStatus(int,int,String)` | 摘要 WorkManager（防御） |
 | `com.coloros.accessibilityassistant.subtitle.globalsummary.GlobalAsrDto` | `getMonthlyAvailableDuration()` / `getMonthlyMaxAvailableDuration()` | UI 剩余时长改极大值 |
 
+## 字幕 ASR 链路确认（为何 hook `s` 与 `h` 即可）
+
+- 引擎工厂 `com.coloros.translate.engine.asr.d`（`AsrEngineImpl`）按类型创建：
+  `long_rtasr_*` → `w2`；`short_rtasr_*` → `i4`。
+- `w2` 委托给具体识别器（`s1`/`u1`/`s0`/`t1`/`p1`），这些继承 `h`（`BaseLongRtAsrWrapper`）→ `s`（`AbstractRtAsrWrapperListener`）。
+- 字幕/全局记录使用 `p1`（`LongRtAsrWithGlobalRecorderWrapper`），其内部通过
+  `com.coloros.translate.engine.asr.asrclient.i`（实现 `asrclient.d` = `AsrForGlobalRecord`）走 AIUnit，
+  或走直连 WS（`o4`）。
+- **两条链路的状态都经 `s#onResultStatus` 转发**给注册的 `IRtasrListener`：
+  `p1` 直接调用 `sVar.onResultStatus(...)`（如 p1:407/452/500/816），
+  `asrclient.d#o()` 调用 `sVar.onResultStatus(...)`（d.java:373-412）。
+- 因此 hook `s#onResultStatus`（分发点）+ `asrclient.h#e`（原始码映射点）即可覆盖字幕限制。
+
 ## 未决问题
 
 - 云端返回 3000803 后是否**继续下发识别结果**？若停止，客户端 hook 无效（需 hook 系统 AIUnit）。

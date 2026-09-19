@@ -20,6 +20,14 @@
 | 3 | `com.coloros.accessibilityassistant.subtitle.g0$d` | `onResultStatus(int,int,String)` | 字幕 WorkManager（防御） |
 | 3 | `com.coloros.accessibilityassistant.subtitle.globalsummary.GlobalAsrWorkManager$e` | `onResultStatus(int,int,String)` | 摘要 WorkManager（防御） |
 | 4 | `com.coloros.accessibilityassistant.subtitle.globalsummary.GlobalAsrDto` | `getMonthlyAvailableDuration()` / `getMonthlyMaxAvailableDuration()` | 返回极大值，UI 显示「剩余充足」 |
+| 5 | `com.coloros.accessibilityassistant.subtitle.g0` | `X()` | 强制返回 false，防止「已达上限」标志导致后续状态码被忽略 |
+
+### 诊断日志
+
+`asr.s#onResultStatus` 会打印**每一个**状态码（`status from=.. code=.. msg=..`），
+真机可用 `logcat -s ColorOSSubtitleUnlock` 观察：
+- 若出现 `drop status code -2020` → hook 命中，限制码被丢弃；
+- 若字幕仍停但无后续状态码 → 云端断流，客户端无法恢复。
 
 ### 为什么 hook 这两个点
 
