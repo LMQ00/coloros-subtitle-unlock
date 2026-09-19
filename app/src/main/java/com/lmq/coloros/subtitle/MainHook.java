@@ -55,6 +55,7 @@ public class MainHook implements IXposedHookLoadPackage {
         hookWorkManagerListeners(lp.classLoader);
         hookMonthlyDto(lp.classLoader);
         hookSubtitleLimitFlag(lp.classLoader);
+        hookStopGuards(lp.classLoader);
     }
 
     private static boolean isLimitStatus(int code) {
@@ -179,6 +180,30 @@ public class MainHook implements IXposedHookLoadPackage {
             log("hooked subtitle limit flag g0#X");
         } catch (Throwable t) {
             log("hook g0#X failed: " + t);
+        }
+    }
+
+    /** 限制到达时的「停止字幕/摘要」动作：兜底置空，防止状态码从其他路径漏过。 */
+    private static void hookStopGuards(ClassLoader cl) {
+        hookVoidNoop("com.coloros.accessibilityassistant.subtitle.g0", cl, "S");
+        hookVoidNoop("com.coloros.accessibilityassistant.subtitle.globalsummary.GlobalAsrWorkManager", cl, "x0");
+        hookVoidNoop("com.coloros.accessibilityassistant.subtitle.globalsummary.GlobalAsrWorkManager", cl, "T0");
+    }
+
+    private static void hookVoidNoop(String cls, ClassLoader cl, String method) {
+        try {
+            XposedHelpers.findAndHookMethod(
+                    cls, cl, method,
+                    new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) {
+                            log("suppress " + param.method.getDeclaringClass().getSimpleName() + "#" + param.method.getName());
+                            param.setResult(null);
+                        }
+                    });
+            log("hooked stop guard " + cls + "#" + method);
+        } catch (Throwable t) {
+            log("hook " + cls + "#" + method + " failed: " + t);
         }
     }
 
