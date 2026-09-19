@@ -133,6 +133,15 @@ com.coloros.accessibilityassistant（单进程）
   `asrclient.d#o()` 调用 `sVar.onResultStatus(...)`（d.java:373-412）。
 - 因此 hook `s#onResultStatus`（分发点）+ `asrclient.h#e`（原始码映射点）即可覆盖字幕限制。
 
+## 已排除：本地/远程开关门控
+
+已确认限制**不存在**客户端本地判定，也无远程开关门控：
+- `SubtitlePrefDb`（SharedPreferences）无 limit/month/quota/duration/remaining 相关 key。
+- `cloud/SwitchFunctionKVEntity` 仅有 `enableSmartVoice` / `enableAutoRecord` 两个开关，与时长限制无关。
+- App 内无任何按 `monthlyAvailableDuration` 决定「是否允许开启字幕」的分支——该字段仅用于显示。
+
+→ 限制判定**唯一**入口是云端 ASR 错误码 `3000803`，客户端只能解除对它的响应。
+
 ## 未决问题
 
 - 云端返回 3000803 后是否**继续下发识别结果**？若停止，客户端 hook 无效（需 hook 系统 AIUnit）。
