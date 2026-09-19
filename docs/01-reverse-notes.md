@@ -138,3 +138,21 @@ com.coloros.accessibilityassistant（单进程）
 - 云端返回 3000803 后是否**继续下发识别结果**？若停止，客户端 hook 无效（需 hook 系统 AIUnit）。
 - 配额绑定维度：设备 `duid` / 账号 / 调用方包名？（文件转写有 `doConsumeCount(duid)`/`getRemainCount(duid)` API）
 - 是否存在按「场景 sceneType」区分的不同配额（字幕=3，通话摘要=4）。
+
+## 候选下一步（若客户端 hook 无效时）
+
+用户观察：**旧版本无限制，新版本才加限制**。若限制是服务端按「上报的 App 版本/身份」判定，
+则客户端仍有杠杆：
+
+- 客户端通过 AIUnit SDK 向系统服务上报自身包名与版本：
+  - `com.oplus.aiunit.core.protocol.AIProtocol#getExtras`：
+    `PARAM_KEY_PACKAGE_NAME = context.getPackageName()`、
+    `PARAM_KEY_PACKAGE_VERSION = AIUtil.getMyAppVersion(context)`。
+  - `ServiceManager` 在构造 `ParamPackage` 时也写入 `PARAM_KEY_PACKAGE_VERSION`（约 line 467/856）。
+- 假设：云端 product config 按 `versionCode` 区间授予不同额度。
+  可尝试 hook `com.oplus.aiunit.core.utils.AIUtil#getMyAppVersion` 返回旧版 versionCode。
+- 风险：可能触发最低版本校验导致 AIUnit 整体不可用；**需真机验证后再决定是否启用**。
+- 另：字幕/摘要的 `sceneType`（`RealTimeAsrInputSlot.KEY_SCENE_TYPE`，字幕=3、通话摘要=4）
+  若不同场景额度不同，改场景亦可尝试。
+
+以上均属**未验证假设**，未纳入当前模块（避免破坏正常功能）。
