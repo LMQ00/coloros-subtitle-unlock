@@ -120,6 +120,13 @@ return true;
   在 Atlas 进程内给所有 `setParameters` 追加 `mss_music_only=0` 即可兜底
   （**已实施**，见下「Hook 设计」的兜底行）。
 
+**链路交叉验证（关键）**：`AudioManager.setParameters` → audioserver → ext 这一段此前只是推断。
+用另一个独立参数证伪/证实：Atlas 的 `OplusFoldingModeAudioChannel` 发 `foldmode=1`，
+而 `oplusSetParameters` 内部 0x500b8 确实 `adrp x2,0x30000; add x2,x2,#0xbd2`
+引用 `"foldmode = %d, flip_rus_switch = %d"`（0x30bd2，另有裸键串 `"foldmode"` 在 0x335a0）。
+⇒ **Java 侧 `setParameters` 的参数确实会进入 `AudioFlingerExtImpl::oplusSetParameters`**，
+`mss_music_only=0` 同样会被处理。该函数处理到 0x50944（`wakeClientByUid` 起始）为止。
+
 ### 4. 白名单是 XML 数据
 
 - 文件：
