@@ -45,3 +45,16 @@
 15. **事件回调要看跳表**：`SpatilaizerNativeClient::onCallback` 用字节跳表分发事件，
     `objdump` 出来的 `cmp/b.hi` 只是边界检查；要按表基址 + `表[i]*4` 算出目标地址
     （本案事件 26 → 0x66958），否则会以为「没有处理这个事件」。
+
+## 构建与安装
+
+16. **每次 CI 构建的签名都不同**：workflow 没有 keystore 步骤，AGP 在全新 runner 上
+    自动生成 `~/.android/debug.keystore`，所以**每次构建的签名证书都不一样**。
+    实测：v1.2 证书 `260919174102Z`（sha256 `cb4997de…`）、v1.3 证书 `260924151753Z`
+    （sha256 `20c72f80…`）——同一台设备上两者不能互相覆盖安装
+    （`INSTALL_FAILED_UPDATE_INCOMPATIBLE`）。
+    → **升级前先卸载旧版**（`/system/bin/pm uninstall com.lmq.coloros.subtitle`），
+    重新安装后在 LSPosed 里重新勾选作用域。想免去这一步就得固定签名密钥（见 `README.md`）。
+17. **核对安装身份**：`/system/bin/pm path <pkg>` 给出已装 APK 路径（`/data/app/.../base.apk` 可读），
+    `md5sum` 与本地产物比对即可确认设备上跑的是哪个构建；证书可用
+    「在 APK 里搜 `30 82 ?? ?? 30 82` 取 DER」的方式提取比对。

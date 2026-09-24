@@ -36,9 +36,19 @@
 
 ## 安装
 
-1. 安装 APK。
-2. LSPosed 中启用模块，作用域勾选「AI 语音摘记」与「Atlas」（`com.oplus.atlas`）。
-3. 重启设备（或分别强制停止并重启这两个 App）。
+1. **先卸载旧版**（每次 CI 构建的签名不同，不能覆盖安装）：
+   `/system/bin/pm uninstall com.lmq.coloros.subtitle`
+2. 安装 `artifacts/` 里的 APK。
+3. LSPosed 中启用模块，作用域勾选「AI 语音摘记」与「Atlas」（`com.oplus.atlas`）。
+4. 重启设备（或分别强制停止并重启这两个 App）。
+
+## 构建与签名
+
+CI（`.github/workflows/build.yml`）用 AGP 默认 debug 签名；runner 每次是全新的，
+所以 **每次构建的签名证书都不同**，新旧构建之间无法覆盖安装，升级前必须卸载旧版。
+
+若要免去「每次卸载 + 重选作用域」，需要固定签名密钥（把 debug keystore 放进仓库并在
+`app/build.gradle` 里指定 `signingConfig`）——**尚未采用**，属待定事项。
 
 ## 已知限制
 
