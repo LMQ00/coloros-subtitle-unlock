@@ -1,7 +1,7 @@
 # 交接文档索引
 
 > 项目：ColorOS 16 逆向 —— 解除系统 AI 音频功能的客户端限制
-> 模块：LSPosed 模块（`module/`），一个 APK 覆盖两个作用域
+> 模块：LSPosed 模块（本仓库），一个 APK 覆盖两个作用域
 
 ## 文件
 
@@ -11,8 +11,9 @@
 | `02-module-design.md` | 字幕解锁的 hook 设计（hook 哪些点、为什么） |
 | `03-pitfalls.md` | 逆向与构建中踩过的坑、如何规避 |
 | `04-stem-separation.md` | 「声音分轨」音乐应用限定的判定链、根因与 hook 设计 |
-| `../AGENTS.md` | 模块工程约定（构建、作用域、约束） |
-| `../`（`module/`） | LSPosed 模块源码（GitHub Actions 编译） |
+| `../AGENTS.md` | 工程约定（硬性约束、构建、作用域、文档同步） |
+| `archive/` | 历史快照（旧版本文档），已冻结，不维护 |
+| `../` | 模块源码（GitHub Actions 编译） |
 
 ## 两个功能与状态
 
@@ -31,8 +32,8 @@
 ## 产物
 
 - 模块源码仓库：https://github.com/LMQ00/coloros-subtitle-unlock （public）
-- 已编译 APK：`../../coloros-subtitle-unlock-v1.3.apk`（debug 签名，含字幕 + 分轨两个 hook）
-- 历史版本：`../../coloros-subtitle-unlock-v1.2.apk`（仅字幕）
+- 已编译 APK：`../artifacts/coloros-subtitle-unlock-v1.3.apk`（debug 签名，含字幕 + 分轨两个 hook）
+- 历史版本：`../artifacts/coloros-subtitle-unlock-v1.2.apk`（仅字幕）
 
 ## 下一步
 

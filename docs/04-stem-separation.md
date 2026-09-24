@@ -233,6 +233,7 @@ return true;
 | `/vendor/etc`、`/system/etc`、`/odm/etc`、`/my_product/etc`、`/product/etc`、`/system_ext/etc` | — | 仅 `oplus.product.feature_multimedia_unique.xml`（特性声明） |
 
 - 全机不存在 `mss_music_only=1` 字面量；`mss_music_only=0` 只出现 1 次（Atlas 的 dex）。
+- 706 个归档的 `*.dex` + `lib/*.so` 全量解压扫描**已完成**，命中恰为上表 3 个文件，无第 4 个。
 - ⇒ **没有任何其他组件会把参数重置为 1**；唯一的 1 来自 audioserver 构造函数默认值。
 
 权限：`OplusAtlasService.apk` 声明了 `android.permission.MODIFY_AUDIO_SETTINGS`
