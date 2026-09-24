@@ -36,19 +36,29 @@
 
 ## 安装
 
-1. **先卸载旧版**（每次 CI 构建的签名不同，不能覆盖安装）：
+1. **只有从旧版（未固定签名的构建）升级时才需要先卸载一次**：
    `/system/bin/pm uninstall com.lmq.coloros.subtitle`
+   固定签名之后，后续构建可直接覆盖安装。
 2. 安装 `artifacts/` 里的 APK。
 3. LSPosed 中启用模块，作用域勾选「AI 语音摘记」与「Atlas」（`com.oplus.atlas`）。
 4. 重启设备（或分别强制停止并重启这两个 App）。
 
 ## 构建与签名
 
-CI（`.github/workflows/build.yml`）用 AGP 默认 debug 签名；runner 每次是全新的，
-所以 **每次构建的签名证书都不同**，新旧构建之间无法覆盖安装，升级前必须卸载旧版。
+签名密钥固定：keystore **不进仓库**，以仓库 secrets 保存，CI 构建时还原。
 
-若要免去「每次卸载 + 重选作用域」，需要固定签名密钥（把 debug keystore 放进仓库并在
-`app/build.gradle` 里指定 `signingConfig`）——**尚未采用**，属待定事项。
+| secret | 用途 |
+|---|---|
+| `KEYSTORE_BASE64` | keystore（PKCS12）的 base64 |
+| `KEYSTORE_PASSWORD` | store password |
+| `KEY_ALIAS` | `coloros-unlock` |
+| `KEY_PASSWORD` | key password |
+
+`app/build.gradle` 由环境变量 `KEYSTORE_PATH` 驱动 `signingConfigs.ci`；无这些变量时
+回退到 AGP 默认 debug 签名（本地无密钥也能构建）。
+
+证书 sha256：`57df9c0d999ea701131b4c1b3c9565c545102c030cea1db59645e4e47002f0bd`。
+连续两次 CI 构建产出**字节相同**的 APK，可直接覆盖安装。
 
 ## 已知限制
 

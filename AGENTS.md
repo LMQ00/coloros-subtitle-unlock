@@ -70,7 +70,8 @@
 - **编译成功判定**：workflow 绿 + 产出 APK 且含 `assets/xposed_init` 与 `MainHook`。`[提示词]`
 - **工程参数**：Gradle + AGP 8.5.2 / Java 17 / compileSdk 35 /
   `compileOnly 'de.robv.android.xposed:api:82'`（仓库 `https://api.xposed.info/`）。`[代码强制]`
-- **已编译产物**：`artifacts/`（debug 签名，不入 git）。`[提示词]`
+- **已编译产物**：`artifacts/`（debug 签名，不入 git）。签名密钥固定在仓库 secrets
+  （`KEYSTORE_BASE64` 等），CI 还原后签名，故构建可直接覆盖安装；详见 `README.md`。`[提示词]`
 
 ## Communication
 
