@@ -57,6 +57,10 @@
 `app/build.gradle` 由环境变量 `KEYSTORE_PATH` 驱动 `signingConfigs.ci`；无这些变量时
 回退到 AGP 默认 debug 签名（本地无密钥也能构建）。
 
+CI 最后一步 `Verify signing certificate` 用 `apksigner --print-certs` 取出证书 sha256，
+与 workflow 里写死的 `EXPECTED_CERT_SHA256` 比对，**不符即中断构建**——
+secrets 配错或 keystore 换了都会立刻红，不会静默产出签名不一致的包。
+
 证书 sha256：`57df9c0d999ea701131b4c1b3c9565c545102c030cea1db59645e4e47002f0bd`。
 连续两次 CI 构建产出**字节相同**的 APK，可直接覆盖安装。
 
