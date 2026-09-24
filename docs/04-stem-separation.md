@@ -103,6 +103,22 @@ return true;
 
 全 `.so` 内 `getListValueByName` **仅此一处调用**（0x1b168）。
 
+**反汇编复核（逐条直读，2026-09-24）**：
+
+- `setMssEnable`（0x1b200）实际控制流：`isAllowedFindSpservice()` 0x1b244 → `tbz` 0x1b248；
+  设备标志 `[this+0x269]` 0x1b250；`memcmp` 比较 `"mss_clear_pkg_all"`（字符串 0xa876）
+  0x1b2b4–0x1b31c；**`isVocalAdjustSupported` 调用点 0x1b374**，`tbz w0,#0` 0x1b378 → 跳 0x1b404
+  （拒绝分支，`__android_log_print` + `str w8,[x22]` 写非 0 到 `*ret`）；
+  成功分支 0x1b3b4 `setMssEnableInt` → 0x1b3d4 `str wzr,[x22]`（`*ret = 0`）。
+  ⇒ 与上文伪代码一致。
+- `isMssMusicOnly`（0x1ad74）调用 0x1aef0：`callClient(this, w1=0x1, w2=0x1a /*26*/, &CallbackData(sp+0x8), &out(sp+0xe8))`
+  ⇒ **事件 26**，与 audioserver 侧事件 26 处理体（0x66958）对应，链路闭合。
+- `getMssEnable`（0x1b7c8）**也走同一 `callClient(…, 26, …)`**，没有独立的第二道门
+  ⇒ 只要 `mss_music_only` 为 0，`setMssEnable` 与 `getMssEnable` 两条路径都会放行。
+- Atlas 内 `setParameters(` 共 **58** 处调用点（`OplusAtlasFeedbackManager`、`OplusAudioDumpsysLog`、
+  `OplusAudioScene`、`KaraokeHelper` …）——若 `hasFeature` 分支万一没走到，
+  可另加「在 Atlas 内给所有 `setParameters` 追加 `mss_music_only=0`」作为兜底注入点（尚未实施）。
+
 ### 4. 白名单是 XML 数据
 
 - 文件：
