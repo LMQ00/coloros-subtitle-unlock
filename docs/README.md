@@ -31,7 +31,8 @@
 ## 产物
 
 - 模块源码仓库：https://github.com/LMQ00/coloros-subtitle-unlock （public）
-- 已编译 APK：`../../coloros-subtitle-unlock-v1.2.apk`（debug 签名）
+- 已编译 APK：`../../coloros-subtitle-unlock-v1.3.apk`（debug 签名，含字幕 + 分轨两个 hook）
+- 历史版本：`../../coloros-subtitle-unlock-v1.2.apk`（仅字幕）
 
 ## 下一步
 

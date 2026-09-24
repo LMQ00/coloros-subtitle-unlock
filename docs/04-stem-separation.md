@@ -126,7 +126,7 @@ return true;
 
 1. 特性声明：`/my_product/etc/permissions/oplus.product.feature_multimedia_unique.xml:89`
    `<oplus-feature name="oplus.software.audio.mss_music_only" />`
-2. `com.oplus.atlas.OplusAtlasService` 初始化分支：
+2. `com.oplus.atlas.OplusAtlasService` **`onCreate()`** 内（`OplusAtlasService.java:286`）：
 
    ```java
    if (!OplusFeatureConfigManager.getInstance().hasFeature("oplus.software.audio.mss_music_only")
@@ -136,6 +136,10 @@ return true;
    ```
 
    特性存在 ⇒ **不设** `mss_music_only=0` ⇒ 保持「仅音乐」。
+   该调用点是 Atlas 内 `hasFeature(String)` 的 10 处调用之一，全部用单参数重载
+   （另一重载 `hasFeature(String, FeatureID)` 无人调用）→ hook 单参数版本即可全覆盖。
+   `OplusFeatureConfigManager.hasFeature(String)` 是自身 override，实现仅
+   `return this.mCache.query(name);`（`oplus-framework.jar`，boot classpath）。
 3. audioserver 接收参数：`AudioFlingerExtImpl::oplusSetParameters`（0x4e88c）用
    `AudioParameter::getInt` 解析 `mss_music_only`，存到 `[this+0x512]`。
 4. `isMssMusicOnly()` 取值路径：向已注册客户端发 `callClient(1, 26, …)`；
@@ -194,5 +198,6 @@ return true;
 - `mss_music_only` 是否会被其他路径重置为 1：静态扫描全部系统 APK 与 native 库，
   只有 `OplusAtlasService` 一处 setter（`Bluetooth.apk` 内出现的只是特性名清单）→ 待真机确认。
 - Atlas 的 `setParameters` 调用是否一定被 audioserver 接受（权限）→ 待真机确认。
-- 该 hook 在 Atlas 进程内是否早于 `OplusAtlasService` 初始化（LSPosed 在类加载时 hook，
-  理论上早于 `onCreate`）→ 待真机确认。
+- 该 hook 是否早于 `OplusAtlasService.onCreate()`：静态上成立（LSPosed 在
+  `handleLoadPackage` 即类加载后立即 hook，`onCreate` 属 Service 生命周期更晚）；
+  但 hook 是否真被 LSPosed 加载 → 待真机确认。
