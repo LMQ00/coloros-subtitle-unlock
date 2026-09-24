@@ -249,6 +249,13 @@ return true;
 - 运行时可观测性受限：`dumpsys media.audio_flinger` / `dumpsys AtlasService` 对非 shell uid 均拒绝
   （`Permission Denial` / `FAILED_TRANSACTION`）→ **参数值只能靠真机 logcat 观察**，不做 root 探测。
 
+## 已知限制
+
+- **参数不持久**：`mss_music_only` 只是 audioserver 内 `AudioFlingerExtImpl` 对象的成员
+  （构造函数默认 1）。若 audioserver 单独重启而 Atlas 不重启，参数会回到 1（仅音乐），
+  需要重启 Atlas（或设备）重新下发。设备重启时 audioserver 先起、Atlas 后起 → 正常。
+- **仅白名单内**：见上文「范围限制」。
+
 ## 未决问题（仅剩真机项）
 
 - hook 是否真被 LSPosed 加载进 `com.oplus.atlas`（作用域是否勾选）→ 真机看日志。
