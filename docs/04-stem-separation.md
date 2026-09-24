@@ -140,6 +140,10 @@ return true;
    （另一重载 `hasFeature(String, FeatureID)` 无人调用）→ hook 单参数版本即可全覆盖。
    `OplusFeatureConfigManager.hasFeature(String)` 是自身 override，实现仅
    `return this.mCache.query(name);`（`oplus-framework.jar`，boot classpath）。
+
+   `onCreate` 内的时序已核对：`this.mAudioManager = audioManager2;` 在 **235 行**，
+   早于 286 行的判断 → 条件中的 `mAudioManager != null` 成立；
+   264 行按 `ro.oplus.audio.support.mss & 1` 创建 `MssPanelHelper`（本机该属性为 `1`，面板存在）。
 3. audioserver 接收参数：`AudioFlingerExtImpl::oplusSetParameters`（0x4e88c）用
    `AudioParameter::getInt` 解析 `mss_music_only`，存到 `[this+0x512]`。
 
@@ -230,6 +234,20 @@ return true;
 
 权限：`OplusAtlasService.apk` 声明了 `android.permission.MODIFY_AUDIO_SETTINGS`
 （系统应用）→ `setParameters` 不会被权限拦下。
+
+## 设备现状（只读探测，无需 root）
+
+| 项 | 值 |
+|---|---|
+| `ro.oplus.audio.support.mss` | `1`（支持 MSS） |
+| `tv.danmaku.bili` | 已安装（`/data/app/…/tv.danmaku.bili-…/base.apk`） |
+| `com.oplus.smartmediacontroller` | `/product/app/SmartMediaController/SmartMediaController.apk`（与 `/my_product/app/…` 同 inode 9815556，是同一文件） |
+| `com.oplus.atlas` | `/system_ext/app/OplusAtlasService/OplusAtlasService.apk` |
+| `com.lmq.coloros.subtitle` | 已安装（旧版本，尚未升级到 v1.3） |
+| `dumpsys -l` | `AtlasService`、`MMListService` 均在运行 |
+
+- 运行时可观测性受限：`dumpsys media.audio_flinger` / `dumpsys AtlasService` 对非 shell uid 均拒绝
+  （`Permission Denial` / `FAILED_TRANSACTION`）→ **参数值只能靠真机 logcat 观察**，不做 root 探测。
 
 ## 未决问题（仅剩真机项）
 
