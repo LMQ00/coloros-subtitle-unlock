@@ -142,6 +142,28 @@ return true;
    `return this.mCache.query(name);`（`oplus-framework.jar`，boot classpath）。
 3. audioserver 接收参数：`AudioFlingerExtImpl::oplusSetParameters`（0x4e88c）用
    `AudioParameter::getInt` 解析 `mss_music_only`，存到 `[this+0x512]`。
+
+   **默认值来自构造函数**：`AudioFlingerExtImplC2` 在 0x4cdfc `mov w20, #0x1`，
+   0x4cf8c `strb w20, [x19, #0x512]` → 对象一建立就是 `1`（即「仅音乐」），
+   与「本机 bilibili 被拒」的现象一致。
+
+   **清除条件（0x4f5ac–0x4f5e8）**：
+
+   ```
+   mov  w8, #-1                       ; 哨兵：键不存在时保持 -1
+   str  w8, [sp, #0xf0]
+   getInt(String8("mss_music_only"), [sp,#0xf0])   ; w0 = status_t（0 = 找到）
+   ldr  w8, [sp, #0xf0]                            ; 解析出的值
+   orr  w22, w0, w8
+   cbnz w22, +8
+   strb wzr, [x20, #0x512]            ; 仅当「键存在 且 值 == 0」才清零
+   ```
+
+   该段位于 `oplusSetParameters` 的**键分发链**上：只有前一个键 `update_hires`
+   **不存在**时才落到这里（0x4f5a8 `cbz` 命中 `update_hires` 处理体则跳过本段）。
+   Atlas 发的正是单键串 `mss_music_only=0` → 不含 `update_hires` → 必然落到本段 →
+   键存在且值为 0 → `[0x512] = 0`。**链路闭合**。
+
 4. `isMssMusicOnly()` 取值路径：向已注册客户端发 `callClient(1, 26, …)`；
    唯一注册的 native 客户端是 audioserver 的
    `AudioFlingerExtImpl::SpatilaizerNativeClient::onCallback`（0x667d0）。
@@ -193,11 +215,23 @@ return true;
    人声/伴奏增益滑杆可调且声音有实际分离效果。
 4. `logcat -s ColorOSSubtitleUnlock` 可见 hook 命中日志。
 
-## 未决问题
+## 参数写入者普查（静态）
 
-- `mss_music_only` 是否会被其他路径重置为 1：静态扫描全部系统 APK 与 native 库，
-  只有 `OplusAtlasService` 一处 setter（`Bluetooth.apk` 内出现的只是特性名清单）→ 待真机确认。
-- Atlas 的 `setParameters` 调用是否一定被 audioserver 接受（权限）→ 待真机确认。
-- 该 hook 是否早于 `OplusAtlasService.onCreate()`：静态上成立（LSPosed 在
-  `handleLoadPackage` 即类加载后立即 hook，`onCreate` 属 Service 生命周期更晚）；
-  但 hook 是否真被 LSPosed 加载 → 待真机确认。
+对整机做了一次穷尽扫描（只读），确认 `mss_music_only` 的**全部**出现位置：
+
+| 范围 | 数量 | 命中 |
+|---|---|---|
+| 所有 `.so`（`/system`、`/system_ext`、`/vendor`、`/odm`、`/my_product`、`/product`，递归） | 3346 | 仅 `libaudioflingerextimpl.so`（reader + 清零点） |
+| 所有 `.apk` / `.jar`（同范围，扫 dex/xml/arsc/assets） | 706 | `oplus-framework.jar`、`Bluetooth.apk`（均只是**特性名字符串表**，即 `FeatureID` 名单，非 setter）；`OplusAtlasService.apk`（**唯一 setter**） |
+| `/vendor/etc`、`/system/etc`、`/odm/etc`、`/my_product/etc`、`/product/etc`、`/system_ext/etc` | — | 仅 `oplus.product.feature_multimedia_unique.xml`（特性声明） |
+
+- 全机不存在 `mss_music_only=1` 字面量；`mss_music_only=0` 只出现 1 次（Atlas 的 dex）。
+- ⇒ **没有任何其他组件会把参数重置为 1**；唯一的 1 来自 audioserver 构造函数默认值。
+
+权限：`OplusAtlasService.apk` 声明了 `android.permission.MODIFY_AUDIO_SETTINGS`
+（系统应用）→ `setParameters` 不会被权限拦下。
+
+## 未决问题（仅剩真机项）
+
+- hook 是否真被 LSPosed 加载进 `com.oplus.atlas`（作用域是否勾选）→ 真机看日志。
+- audioserver 是否接受 Atlas 下发的参数（静态上权限与路径都已满足）→ 真机看是否真的放行。
