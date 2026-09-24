@@ -13,7 +13,7 @@
 
 ## Hook 设计（三层防御 + UI 改写）
 
-源码：`module/app/src/main/java/com/lmq/coloros/subtitle/MainHook.java`
+源码：`app/src/main/java/com/lmq/coloros/subtitle/MainHook.java`
 
 | # | 类 | 方法 | 行为 |
 |---|---|---|---|

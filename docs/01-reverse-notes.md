@@ -2,14 +2,14 @@
 
 > 本文只覆盖**字幕 120 分钟限制**。「声音分轨」的逆向见 `04-stem-separation.md`。
 
-> 对象：`AI 语音摘记_16.3.12.apk`
+> 对象（在仓库上一层）：`../AI 语音摘记_16.3.12.apk`
 > 包名：`com.coloros.accessibilityassistant`
 > versionCode 1603012 / versionName 16.3.12 / minSdk 35 / targetSdk 35 / 单进程
 
 反编译命令（产物保留在 `~/tmp/jadx-out`）：
 
 ```bash
-jadx -d ~/tmp/jadx-out --no-res --threads-count 4 "AI 语音摘记_16.3.12.apk"
+jadx -d ~/tmp/jadx-out --no-res --threads-count 4 "../AI 语音摘记_16.3.12.apk"
 ```
 
 ## 结论（一句话）

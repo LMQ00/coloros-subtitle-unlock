@@ -7,8 +7,8 @@
 | 字幕每月 120 分钟限制 | `com.coloros.accessibilityassistant`（AI 语音摘记） | 丢弃云端限制状态码 `3000803` → `-2020`，并改写「本月剩余时长」 |
 | 声音分轨限音乐 App | `com.oplus.smartmediacontroller`（声音分轨） | 在 `com.oplus.atlas` 进程内让特性 `oplus.software.audio.mss_music_only` 判定为 false，使 Atlas 下发 `mss_music_only=0` |
 
-> 逆向对象：`AI 语音摘记_16.3.12.apk`（versionCode 1603012）、
-> `声音分轨_16.1.20.apk`（versionCode 16001020）
+> 逆向对象（在仓库上一层）：`../AI 语音摘记_16.3.12.apk`（versionCode 1603012）、
+> `../声音分轨_16.1.20.apk`（versionCode 16001020）
 
 ## 原理
 

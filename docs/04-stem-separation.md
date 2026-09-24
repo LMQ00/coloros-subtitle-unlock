@@ -1,13 +1,13 @@
 # 声音分轨：音乐应用限定解除（逆向 + hook 设计）
 
-> 对象：`声音分轨_16.1.20.apk`
+> 对象（在仓库上一层）：`../声音分轨_16.1.20.apk`
 > 包名：`com.oplus.smartmediacontroller`（versionCode 16001020 / minSdk 34 / targetSdk 35）
 > 与设备预装 `/my_product/app/SmartMediaController/SmartMediaController.apk` 字节数相同（4555687）
 
 反编译 / 反汇编命令（产物保留在 `~/tmp`）：
 
 ```bash
-jadx -d ~/tmp/jadx-stem --no-res --threads-count 4 "声音分轨_16.1.20.apk"        # 目标 App
+jadx -d ~/tmp/jadx-stem --no-res --threads-count 4 "../声音分轨_16.1.20.apk"        # 目标 App
 jadx -d ~/tmp/jadx-atlas --no-res --threads-count 4 /system_ext/app/OplusAtlasService/OplusAtlasService.apk
 llvm-objdump -d /system_ext/lib64/libSpecailizerPLService.so > ~/tmp/sp.asm
 llvm-objdump -d /system_ext/lib64/libaudioflingerextimpl.so  > ~/tmp/af.asm
