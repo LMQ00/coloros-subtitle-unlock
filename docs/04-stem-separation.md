@@ -118,6 +118,9 @@ return true;
   - **attr 2**（不支持人声调节）：`com.spotify.music` 等
 - 选取规则（`getMMListData` 0x5754）：读两文件的 `<version>`，**版本号大者生效**
   （现 系统 `20260703` > online `20260225`）
+- 设备实测复核（2026-09-24，只读）：两文件各 **26** 条，属性分布均为
+  `3`×12 / `17`×7 / `2`×7；`tv.danmaku.bili` 与 `tv.danmaku.bilibilihd` 均为 **17** → 确认被
+  `bit4` 门控挡住，是本 hook 的直接目标
 - 匹配是精确 `strcmp`（`getInfoFromMMList` 0x6570）→ **无通配符**
 - 解析链：`libmmlistparser.so` → `libimmlistservice.so`（IMMListService）
   → `ListServiceUtils`（`libListWrapperRouter.so`）→ `SpecailizerPLService`
