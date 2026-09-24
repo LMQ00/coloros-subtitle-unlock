@@ -60,6 +60,7 @@
 CI 最后一步 `Verify signing certificate` 用 `apksigner --print-certs` 取出证书 sha256，
 与 workflow 里写死的 `EXPECTED_CERT_SHA256` 比对，**不符即中断构建**——
 secrets 配错或 keystore 换了都会立刻红，不会静默产出签名不一致的包。
+换密钥时须同步更新 workflow 里的 `EXPECTED_CERT_SHA256` 与本节指纹（换密钥后需卸载重装一次）。
 
 证书 sha256：`57df9c0d999ea701131b4c1b3c9565c545102c030cea1db59645e4e47002f0bd`。
 连续两次 CI 构建产出**字节相同**的 APK，可直接覆盖安装。
