@@ -9,28 +9,41 @@ import de.robv.android.xposed.XposedHelpers;
 import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
 /**
- * LSPosed 模块：解除 ColorOS「AI 语音摘记」(com.coloros.accessibilityassistant)
- * 开启字幕功能的每月 120 分钟时长限制。
+ * LSPosed 模块：解除 ColorOS 16 系统 AI 音频功能的客户端限制。
  *
- * 逆向结论（APK 16.3.12）：
- *   云端 ASR 通过 AIUnit 返回错误码 3000803（"月额度已达限"），
- *   经 com.coloros.translate.engine.asr.asrclient.h#e 映射为 e4.c.ASR_MONTHLY_LIMIT_REACHED(-2020)，
- *   再由引擎分发器 com.coloros.translate.engine.asr.s#onResultStatus 转发给各 WorkManager，
- *   最终 GlobalSubtitleWorkManager 停止字幕并弹「已达上限」提示。
+ * 1) 「AI 语音摘记」(com.coloros.accessibilityassistant) 开启字幕的每月 120 分钟限制。
+ *    逆向结论（APK 16.3.12）：
+ *      云端 ASR 通过 AIUnit 返回错误码 3000803（"月额度已达限"），
+ *      经 com.coloros.translate.engine.asr.asrclient.h#e 映射为 e4.c.ASR_MONTHLY_LIMIT_REACHED(-2020)，
+ *      再由引擎分发器 com.coloros.translate.engine.asr.s#onResultStatus 转发给各 WorkManager，
+ *      最终 GlobalSubtitleWorkManager 停止字幕并弹「已达上限」提示。
+ *    本模块在三个层面丢弃这些限制状态码，并把 UI 的「本月剩余时长」改写为极大值。
+ *    注意：配额由云端/系统 AIUnit 判定，本模块只解除客户端对限制的反应。
  *
- * 本模块在三个层面丢弃这些限制状态码，使字幕/摘记继续运行：
- *   1) AsrGlobalParser 入口（原始码 3000801/3000802/3000803）
- *   2) 引擎 -> 监听器分发器 s#onResultStatus（状态码 -2017/-2018/-2020）
- *   3) 具体 WorkManager 监听器（防御性）
- * 并把 UI 上的「本月剩余时长」改写为极大值。
- *
- * 注意：配额由云端/系统 AIUnit 判定，本模块只解除客户端对限制的反应。
- *       若云端在返回 3000803 后彻底停止下发识别结果，则客户端无法恢复。
+ * 2) 「声音分轨」(com.oplus.smartmediacontroller) 仅限音乐类 App 使用。
+ *    逆向结论（APK 16.1.20 + 系统库反汇编）：
+ *      判定在 native 服务 android::SpecailizerPLService（跑在 audioserver 内）：
+ *      setMssEnable(pkg,true) 先调 isVocalAdjustSupported(pkg)，该函数查 XML 白名单
+ *      "mss-whitelist" 的 attribute 值 v：bit0 必须为 1（支持人声调节）；
+ *      若 v 的 bit4 置位（非音乐类，如 bilibili 的 17），还要看 isMssMusicOnly()，
+ *      为真则拒绝并令 *ret = -1 —— App 收到非 0 便弹「当前应用暂不支持声音分轨」。
+ *      isMssMusicOnly() 取自音频参数 mss_music_only；该参数是否被置 0 取决于
+ *      OplusAtlasService 初始化时的
+ *        if (!OplusFeatureConfigManager.getInstance().hasFeature("oplus.software.audio.mss_music_only"))
+ *            audioManager.setParameters("mss_music_only=0");
+ *      本机声明了该特性，故参数保持 1（仅音乐）。
+ *    本模块在 com.oplus.atlas 进程内让该特性判定返回 false，使 Atlas 自行下发
+ *    mss_music_only=0，从而放行白名单内带「非音乐类」位的 App（如 bilibili）。
+ *    注意：不在 mss-whitelist 内的 App 仍然不支持。
  */
 public class MainHook implements IXposedHookLoadPackage {
 
     private static final String TAG = "ColorOSSubtitleUnlock";
     private static final String TARGET_PKG = "com.coloros.accessibilityassistant";
+    private static final String TARGET_PKG_ATLAS = "com.oplus.atlas";
+
+    /** 设备特性：声明后 OplusAtlasService 不再下发 mss_music_only=0（即「分轨仅音乐」）。 */
+    private static final String FEATURE_MSS_MUSIC_ONLY = "oplus.software.audio.mss_music_only";
 
     // t3.a / e4.c 状态码
     private static final int CODE_USE_TIME_TOO_LONG = -2017;
@@ -46,6 +59,11 @@ public class MainHook implements IXposedHookLoadPackage {
 
     @Override
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lp) {
+        if (TARGET_PKG_ATLAS.equals(lp.packageName)) {
+            log("module loading in " + lp.packageName + " (pid=" + android.os.Process.myPid() + ")");
+            hookMssMusicOnlyFeature(lp.classLoader);
+            return;
+        }
         if (!TARGET_PKG.equals(lp.packageName)) {
             return;
         }
@@ -56,6 +74,31 @@ public class MainHook implements IXposedHookLoadPackage {
         hookMonthlyDto(lp.classLoader);
         hookSubtitleLimitFlag(lp.classLoader);
         hookStopGuards(lp.classLoader);
+    }
+
+    /**
+     * 「声音分轨」：让 com.oplus.atlas 认为设备未声明「分轨仅音乐」特性，
+     * 从而 OplusAtlasService 自行下发 setParameters("mss_music_only=0")。
+     */
+    private static void hookMssMusicOnlyFeature(ClassLoader cl) {
+        try {
+            XposedHelpers.findAndHookMethod(
+                    "com.oplus.content.OplusFeatureConfigManager", cl, "hasFeature",
+                    String.class,
+                    new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) {
+                            String name = (String) param.args[0];
+                            if (FEATURE_MSS_MUSIC_ONLY.equals(name)) {
+                                log("force hasFeature(" + name + ") = false");
+                                param.setResult(Boolean.FALSE);
+                            }
+                        }
+                    });
+            log("hooked OplusFeatureConfigManager#hasFeature");
+        } catch (Throwable t) {
+            log("hookMssMusicOnlyFeature failed: " + t);
+        }
     }
 
     private static boolean isLimitStatus(int code) {

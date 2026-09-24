@@ -26,3 +26,22 @@
    若云端直接断流，只能 hook 系统 App `com.oplus.aiunit`（超出当前范围，且用户明确不 hook 系统框架）。
 9. **hook 是否命中**：真机抓 `logcat -s ColorOSSubtitleUnlock`，应看到 `hooked ...` 与 `drop ...` 日志。
    若某类找不到会打印 `hook xxx failed`，据此调整类名（版本差异）。
+
+## 声音分轨（`04-stem-separation.md` 配套）
+
+10. **误判为「App 自己判断是不是音乐软件」**：目标 App `com.oplus.smartmediacontroller` 只是遥控器，
+    判定在 native 系统服务里。**只 hook 目标 App 无效**——native 侧 `*ret = -1` 且不执行
+    `setMssEnableInt`，分轨根本不会启用（只会改 UI）。
+11. **判定点不一定在代码里**：本案的限制是「XML 白名单 + 一个音频参数」。定位到 native 服务后，
+    先找**数据与开关**（`.so` 里的字符串常量、XML 配置、`SystemProperties`、音频参数），
+    再决定要不要 hook。字符串常量表是最快的线索来源：
+    `grep -aoE "[ -~]{6,}" lib.so | grep -i 关键词`。
+12. **无 `aapt` / `apkanalyzer`**：Termux 上没有；读 `AndroidManifest.xml` 用 Python 手写
+    AXML 解析（UTF-16 字符串池 + 属性表），比装 SDK 快得多。
+13. **大 jar 反编译耗时**：`oplus-services.jar` 有 3 个 dex / 28MB，全量 jadx 很慢；
+    只查一个类时用 `jadx --single-class <FQCN>`，秒级出结果。
+14. **AIDL 客户端 ≠ 判定点**：`AudioEffectCenter`、`OplusGames` 等都引用 `ISpecailizerPLService`，
+    但都只是调用方。判断谁是「判定方」要看**谁写返回值**，不是谁引用了接口。
+15. **事件回调要看跳表**：`SpatilaizerNativeClient::onCallback` 用字节跳表分发事件，
+    `objdump` 出来的 `cmp/b.hi` 只是边界检查；要按表基址 + `表[i]*4` 算出目标地址
+    （本案事件 26 → 0x66958），否则会以为「没有处理这个事件」。

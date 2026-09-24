@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string-array name="xposed_scope">
+        <!-- AI 语音摘记：字幕每月 120 分钟限制 -->
         <item>com.coloros.accessibilityassistant</item>
+        <!-- Atlas：声音分轨「仅音乐」开关（OplusAtlasService 在此进程决定是否下发 mss_music_only=0） -->
+        <item>com.oplus.atlas</item>
     </string-array>
 </resources>

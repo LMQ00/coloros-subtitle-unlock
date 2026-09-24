@@ -1,5 +1,7 @@
 # 逆向笔记：ColorOS「AI 语音摘记」字幕时长限制
 
+> 本文只覆盖**字幕 120 分钟限制**。「声音分轨」的逆向见 `04-stem-separation.md`。
+
 > 对象：`AI 语音摘记_16.3.12.apk`
 > 包名：`com.coloros.accessibilityassistant`
 > versionCode 1603012 / versionName 16.3.12 / minSdk 35 / targetSdk 35 / 单进程

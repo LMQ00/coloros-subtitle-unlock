@@ -1,30 +1,41 @@
 # 交接文档索引
 
-> 项目：解除 ColorOS「AI 语音摘记」开启字幕的每月 120 分钟限制
-> 状态：模块已编译产出可安装 APK，待真机实测
+> 项目：ColorOS 16 逆向 —— 解除系统 AI 音频功能的客户端限制
+> 模块：LSPosed 模块（`module/`），一个 APK 覆盖两个作用域
 
 ## 文件
 
-| 文件 | 内容 |
+| 文件 | 回答什么问题 |
 |---|---|
-| `01-reverse-notes.md` | 逆向结论与证据链（类/方法/状态码） |
-| `02-module-design.md` | 模块 hook 设计说明 |
-| `03-pitfalls.md` | 踩坑记录与规避 |
-| `../AGENTS.md` | 工程约定（构建、目录、约束） |
-| `../module/` | LSPosed 模块源码（GitHub Actions 编译） |
+| `01-reverse-notes.md` | 「AI 语音摘记」字幕每月 120 分钟限制在哪判定、证据是什么 |
+| `02-module-design.md` | 字幕解锁的 hook 设计（hook 哪些点、为什么） |
+| `03-pitfalls.md` | 逆向与构建中踩过的坑、如何规避 |
+| `04-stem-separation.md` | 「声音分轨」音乐应用限定的判定链、根因与 hook 设计 |
+| `../AGENTS.md` | 模块工程约定（构建、作用域、约束） |
+| `../`（`module/`） | LSPosed 模块源码（GitHub Actions 编译） |
+
+## 两个功能与状态
+
+| 功能 | 目标 App | 判定点 | 状态 |
+|---|---|---|---|
+| 字幕 120 分钟限制 | `com.coloros.accessibilityassistant` | 云端状态码 `3000803` → 客户端响应 | 模块已实现，待真机确认 |
+| 声音分轨音乐限定 | `com.oplus.smartmediacontroller` | native `mss-whitelist` + `mss_music_only` 参数 | 模块已实现，待真机确认 |
+
+## 模块作用域
+
+`app/src/main/res/values/arrays.xml` 的 `xposed_scope`：
+
+- `com.coloros.accessibilityassistant` —— 字幕限制
+- `com.oplus.atlas` —— 分轨限制（`OplusAtlasService` 在此进程决定是否下发 `mss_music_only=0`）
 
 ## 产物
 
 - 模块源码仓库：https://github.com/LMQ00/coloros-subtitle-unlock （public）
-- 已编译 APK：`../coloros-subtitle-unlock-v1.2.apk`（debug 签名，可直接安装）
+- 已编译 APK：`../../coloros-subtitle-unlock-v1.2.apk`（debug 签名）
 
 ## 下一步
 
-1. 真机安装 APK，LSPosed 启用模块，作用域勾选「AI 语音摘记」。
-2. 强制停止并重启「AI 语音摘记」。
-3. 开启字幕后实测是否仍受 120 分钟限制；抓 `logcat -s ColorOSSubtitleUnlock` 看 hook 日志。
-
-## 关键风险
-
-配额由云端判定。若云端在返回 `3000803` 后停止下发识别结果，客户端模块无效。
-详见 `01-reverse-notes.md` 末尾「未决问题」。
+1. ~~实现 `MainHook` 的分轨分支~~ 已完成（`MainHook#hookMssMusicOnlyFeature`）。
+2. push `main` 触发 GitHub Actions 编译，下载产物。
+3. 真机：LSPosed 勾选两个作用域 → 重启 → bilibili 实测分轨 + 字幕。
+4. 抓 `logcat -s ColorOSSubtitleUnlock` 确认 hook 命中。

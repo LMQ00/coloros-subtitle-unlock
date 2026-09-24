@@ -3,7 +3,7 @@
 
     <application
         android:allowBackup="false"
-        android:label="AI 语音摘记·字幕解锁"
+        android:label="ColorOS AI 音频解锁"
         android:supportsRtl="true">
 
         <meta-data
@@ -11,7 +11,7 @@
             android:value="true" />
         <meta-data
             android:name="xposeddescription"
-            android:value="解除 ColorOS「AI 语音摘记」开启字幕的每月 120 分钟时长限制" />
+            android:value="解除 ColorOS 16 系统 AI 音频功能限制：AI 语音摘记字幕每月 120 分钟上限、声音分轨仅限音乐类 App" />
         <meta-data
             android:name="xposedminversion"
             android:value="82" />

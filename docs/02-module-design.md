@@ -1,4 +1,6 @@
-# 模块设计
+# 模块设计（字幕解锁）
+
+> 本文只覆盖**字幕 120 分钟限制**的 hook 设计。「声音分轨」的设计见 `04-stem-separation.md`。
 
 ## 目标
 
@@ -52,5 +54,8 @@
 
 ## 作用域
 
-`AndroidManifest.xml` 的 `xposedscope` 数组仅含 `com.coloros.accessibilityassistant`。
-引擎 `TranslateService` 与该 App 同进程，故单进程 hook 足够。
+`app/src/main/res/values/arrays.xml` 的 `xposed_scope`：
+
+- `com.coloros.accessibilityassistant` —— 字幕限制。引擎 `TranslateService` 与该 App 同进程，
+  故单进程 hook 足够。
+- `com.oplus.atlas` —— 分轨限制（见 `04-stem-separation.md`）。
