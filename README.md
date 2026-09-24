@@ -39,7 +39,7 @@
 1. **只有从旧版（未固定签名的构建）升级时才需要先卸载一次**：
    `/system/bin/pm uninstall com.lmq.coloros.subtitle`
    固定签名之后，后续构建可直接覆盖安装。
-2. 安装 `artifacts/` 里的 APK。
+2. 安装 `artifacts/coloros-subtitle-unlock-v1.4.apk`（含分轨主路径 + 兜底）。
 3. LSPosed 中启用模块，作用域勾选「AI 语音摘记」与「Atlas」（`com.oplus.atlas`）。
 4. 重启设备（或分别强制停止并重启这两个 App）。
 
