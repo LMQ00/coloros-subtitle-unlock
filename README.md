@@ -60,6 +60,9 @@
 证书 sha256：`57df9c0d999ea701131b4c1b3c9565c545102c030cea1db59645e4e47002f0bd`。
 连续两次 CI 构建产出**字节相同**的 APK，可直接覆盖安装。
 
+> keystore 本地备份：`~/tmp/coloros-unlock.keystore`，口令在 `~/tmp/ci-keystore/pw.txt`。
+> 密钥只存在仓库 secrets 与本机 `~/tmp`，**丢了就只能换新密钥**（换密钥后需卸载重装一次）。
+
 ## 已知限制
 
 - **字幕**：配额由云端 / 系统 AIUnit (`com.oplus.aiunit`) 判定，本模块只解除**客户端对限制的反应**。
