@@ -62,6 +62,7 @@ public class MainHook implements IXposedHookLoadPackage {
         if (TARGET_PKG_ATLAS.equals(lp.packageName)) {
             log("module loading in " + lp.packageName + " (pid=" + android.os.Process.myPid() + ")");
             hookMssMusicOnlyFeature(lp.classLoader);
+            hookAtlasSetParameters(lp.classLoader);
             return;
         }
         if (!TARGET_PKG.equals(lp.packageName)) {
@@ -98,6 +99,40 @@ public class MainHook implements IXposedHookLoadPackage {
             log("hooked OplusFeatureConfigManager#hasFeature");
         } catch (Throwable t) {
             log("hookMssMusicOnlyFeature failed: " + t);
+        }
+    }
+
+    /**
+     * 兜底：Atlas 进程内任何 {@code AudioManager.setParameters} 都补上 {@code mss_music_only=0}。
+     *
+     * 主路径依赖 {@code OplusAtlasService.onCreate()} 里那一处判断；若该分支因任何原因没走到
+     * （或 audioserver 重启把参数重置回构造函数默认的 1），本兜底会在下一次参数下发时重新置 0。
+     * 只在 Atlas 进程内生效，不改动其他 App。
+     */
+    private static void hookAtlasSetParameters(ClassLoader cl) {
+        try {
+            XposedHelpers.findAndHookMethod(
+                    "android.media.AudioManager", cl, "setParameters",
+                    String.class,
+                    new XC_MethodHook() {
+                        private int appended = 0;
+
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) {
+                            String s = (String) param.args[0];
+                            if (s == null || s.contains("mss_music_only")) {
+                                return;
+                            }
+                            param.args[0] = s + ";mss_music_only=0";
+                            if (appended < 20) {
+                                appended++;
+                                log("append mss_music_only=0 -> \"" + s + "\"");
+                            }
+                        }
+                    });
+            log("hooked AudioManager#setParameters (fallback)");
+        } catch (Throwable t) {
+            log("hookAtlasSetParameters failed: " + t);
         }
     }
 

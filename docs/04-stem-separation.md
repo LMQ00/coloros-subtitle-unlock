@@ -117,7 +117,8 @@ return true;
   ⇒ 只要 `mss_music_only` 为 0，`setMssEnable` 与 `getMssEnable` 两条路径都会放行。
 - Atlas 内 `setParameters(` 共 **58** 处调用点（`OplusAtlasFeedbackManager`、`OplusAudioDumpsysLog`、
   `OplusAudioScene`、`KaraokeHelper` …）——若 `hasFeature` 分支万一没走到，
-  可另加「在 Atlas 内给所有 `setParameters` 追加 `mss_music_only=0`」作为兜底注入点（尚未实施）。
+  在 Atlas 进程内给所有 `setParameters` 追加 `mss_music_only=0` 即可兜底
+  （**已实施**，见下「Hook 设计」的兜底行）。
 
 ### 4. 白名单是 XML 数据
 
@@ -209,6 +210,18 @@ return true;
 | 方法 | `public boolean hasFeature(String name)` |
 | 进程 | `com.oplus.atlas` |
 | 行为 | `name.equals("oplus.software.audio.mss_music_only")` → 返回 `false` |
+
+**兜底（同一进程）**：
+
+| 项 | 值 |
+|---|---|
+| 类 | `android.media.AudioManager`（boot classpath） |
+| 方法 | `setParameters(String)` |
+| 行为 | 若串中不含 `mss_music_only`，则追加 `;mss_music_only=0` |
+
+兜底理由：主路径依赖 `OplusAtlasService.onCreate()` 那一处判断；该分支没走到、或 audioserver
+重启把参数重置回构造函数默认值 1 时，兜底会在下一次参数下发（Atlas 内共 58 处）重新置 0。
+只作用于 Atlas 进程，日志用 `append mss_music_only=0 -> "..."` 与主路径区分。
 
 效果：`OplusAtlasService` 的 `setParameters("mss_music_only=0")` 分支被满足
 → audioserver 参数置 0 → `isMssMusicOnly()` 为 false
