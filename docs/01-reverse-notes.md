@@ -5,6 +5,8 @@
 > 对象（在仓库上一层）：`../AI 语音摘记_16.3.12.apk`
 > 包名：`com.coloros.accessibilityassistant`
 > versionCode 1603012 / versionName 16.3.12 / minSdk 35 / targetSdk 35 / 单进程
+> 设备实测：与预装 `/product/app/ColorAccessibilityAssistant/ColorAccessibilityAssistant.apk`
+> **md5 完全一致**（`1541e6a457e6d1593a011d2bb288701a`，40869270 字节）
 
 反编译命令（产物保留在 `~/tmp/jadx-out`）：
 

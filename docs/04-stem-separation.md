@@ -2,7 +2,8 @@
 
 > 对象（在仓库上一层）：`../声音分轨_16.1.20.apk`
 > 包名：`com.oplus.smartmediacontroller`（versionCode 16001020 / minSdk 34 / targetSdk 35）
-> 与设备预装 `/my_product/app/SmartMediaController/SmartMediaController.apk` 字节数相同（4555687）
+> 与设备预装 `/product/app/SmartMediaController/SmartMediaController.apk`
+> （`/my_product/app/…` 同 inode）**md5 完全一致**（`fedfe3c0cc66681298c65c337a1c2488`，4555687 字节）
 
 反编译 / 反汇编命令（产物保留在 `~/tmp`）：
 
