@@ -2,6 +2,11 @@ plugins {
     id 'com.android.application'
 }
 
+// 固定签名：CI 从仓库 secrets 还原 keystore（见 .github/workflows/build.yml）。
+// 没有这些环境变量时（例如本地无密钥构建）回退到 AGP 默认 debug 签名。
+def ciKeystorePath = System.getenv("KEYSTORE_PATH")
+def hasCiKeystore = ciKeystorePath != null && file(ciKeystorePath).exists()
+
 android {
     namespace 'com.lmq.coloros.subtitle'
     compileSdk 35
@@ -14,7 +19,23 @@ android {
         versionName "1.0"
     }
 
+    signingConfigs {
+        if (hasCiKeystore) {
+            ci {
+                storeFile file(ciKeystorePath)
+                storePassword System.getenv("KEYSTORE_PASSWORD")
+                keyAlias System.getenv("KEY_ALIAS")
+                keyPassword System.getenv("KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
+        debug {
+            if (hasCiKeystore) {
+                signingConfig signingConfigs.ci
+            }
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt')

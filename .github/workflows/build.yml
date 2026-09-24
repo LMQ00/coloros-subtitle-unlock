@@ -23,8 +23,34 @@ jobs:
         with:
           gradle-version: '8.7'
 
+      # 固定签名：从仓库 secret 还原 keystore，使每次构建的签名一致（可直接覆盖安装）。
+      - name: Decode keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          test -n "$KEYSTORE_BASE64"
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/ci-debug.keystore"
+          echo "KEYSTORE_PATH=$RUNNER_TEMP/ci-debug.keystore" >> "$GITHUB_ENV"
+
       - name: Build debug APK
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: gradle assembleDebug --no-daemon --stacktrace
+
+      - name: Verify signing certificate
+        run: |
+          set -euo pipefail
+          APK=$(ls app/build/outputs/apk/debug/*.apk | head -1)
+          unzip -l "$APK"
+          ls -l "$APK"
+          if command -v apksigner >/dev/null 2>&1; then
+            apksigner verify --print-certs "$APK"
+          else
+            "$ANDROID_HOME"/build-tools/*/apksigner verify --print-certs "$APK" || true
+          fi
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
