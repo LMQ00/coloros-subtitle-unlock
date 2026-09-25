@@ -20,7 +20,7 @@
 | 功能 | 目标 App | 判定点 | 状态 |
 |---|---|---|---|
 | 字幕 120 分钟限制 | `com.coloros.accessibilityassistant` | 云端状态码 `3000803` → 客户端响应 | 模块已实现，待真机确认 |
-| 声音分轨音乐限定 | `com.oplus.smartmediacontroller` | native `mss-whitelist` + `mss_music_only` 参数 | 模块已实现，待真机确认 |
+| 声音分轨音乐限定 | `com.oplus.smartmediacontroller` | native `mss-whitelist` + `mss_music_only` 参数 | 判定链已通（binder 探针实测放行），待真机看面板效果 |
 
 ## 模块作用域
 
@@ -34,8 +34,8 @@
 ## 产物
 
 - 模块源码仓库：https://github.com/LMQ00/coloros-subtitle-unlock （public）
-- 已编译 APK：`../artifacts/coloros-subtitle-unlock-v1.5.apk`（debug 签名，含字幕 + 分轨三条注入路径；
-  证书 sha256 `57df9c0d…`，固定签名）
+- 已编译 APK：`../artifacts/coloros-subtitle-unlock-v1.6.apk`（debug 签名，含字幕 + 分轨三条注入路径，
+  注入时机提前到 App 进程启动；证书 sha256 `57df9c0d…`，固定签名）
 - 上一版：`../artifacts/coloros-subtitle-unlock-v1.4.apk`（分轨仅 Atlas 内两条路径，需 Atlas 进程重建）
 - 更早：`../artifacts/coloros-subtitle-unlock-v1.3.apk`（分轨仅主路径）
 - 历史版本：`../artifacts/coloros-subtitle-unlock-v1.2.apk`（仅字幕，**旧签名**，与 v1.3/v1.4 不能互相覆盖）
