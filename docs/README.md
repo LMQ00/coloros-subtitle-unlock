@@ -11,6 +11,7 @@
 | `02-module-design.md` | 字幕解锁的 hook 设计（hook 哪些点、为什么） |
 | `03-pitfalls.md` | 逆向与构建中踩过的坑、如何规避 |
 | `04-stem-separation.md` | 「声音分轨」音乐应用限定的判定链、根因与 hook 设计 |
+| `05-native-whitelist-unlock.md` | 解除白名单限制（native 补丁 + KernelSU 模块），让任意 App 可分轨 |
 | `../AGENTS.md` | 工程约定（硬性约束、构建、作用域、文档同步） |
 | `archive/` | 历史快照（旧版本文档），已冻结，不维护 |
 | `../` | 模块源码（GitHub Actions 编译） |
@@ -20,7 +21,8 @@
 | 功能 | 目标 App | 判定点 | 状态 |
 |---|---|---|---|
 | 字幕 120 分钟限制 | `com.coloros.accessibilityassistant` | 云端状态码 `3000803` → 客户端响应 | 模块已实现，待真机确认 |
-| 声音分轨音乐限定 | `com.oplus.smartmediacontroller` | native `mss-whitelist` + `mss_music_only` 参数 | 判定链已通（binder 探针实测放行），待真机看面板效果 |
+| 声音分轨音乐限定 | `com.oplus.smartmediacontroller` | native `mss-whitelist` + `mss_music_only` 参数 | 已验证（用户实测可用） |
+| 分轨「任意 App」 | 同上 | `mss-whitelist` 白名单 | native 补丁模块已装，待重启验证 |
 
 ## 模块作用域
 
