@@ -175,6 +175,11 @@ public class MainHook implements IXposedHookLoadPackage {
                                 injected++;
                                 if (injected <= 5) {
                                     log("MssService: setParameters(mss_music_only=0) #" + injected);
+                                    // 诊断：读回参数，判断 audioserver 侧是否真的生效
+                                    log("probe getParameters(\"mss_music_only\")=\""
+                                            + am.getParameters("mss_music_only")
+                                            + "\" getParameters(\"foldmode\")=\""
+                                            + am.getParameters("foldmode") + "\"");
                                 }
                             } catch (Throwable t) {
                                 log("MssService inject failed: " + t);
