@@ -175,11 +175,16 @@ public class MainHook implements IXposedHookLoadPackage {
                                 injected++;
                                 if (injected <= 5) {
                                     log("MssService: setParameters(mss_music_only=0) #" + injected);
-                                    // 诊断：读回参数，判断 audioserver 侧是否真的生效
+                                    // 诊断 1：读回参数（ext 的 getParameters 只处理特定 key）
                                     log("probe getParameters(\"mss_music_only\")=\""
                                             + am.getParameters("mss_music_only")
-                                            + "\" getParameters(\"foldmode\")=\""
-                                            + am.getParameters("foldmode") + "\"");
+                                            + "\" (\"ismetaAudio\")=\""
+                                            + am.getParameters("ismetaAudio")
+                                            + "\" (\"get_audioinfos\")=\""
+                                            + am.getParameters("get_audioinfos") + "\"");
+                                    // 诊断 2：发一个「处理分支必定打日志」的参数，用于判定 ext 是否真被调用
+                                    am.setParameters("holoDeviceCompatState=0");
+                                    log("probe setParameters(holoDeviceCompatState=0) done");
                                 }
                             } catch (Throwable t) {
                                 log("MssService inject failed: " + t);
