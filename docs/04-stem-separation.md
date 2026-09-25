@@ -394,19 +394,7 @@ native 日志：isVocalAdjustSupported: supportType=17 → setMssEnableInt --- t
 把 audioserver 的标志置 0 即可。模块在 SMC 进程 `MssService.onStartCommand` 入口注入，正好早于
 App 调 `setMssEnable`（面板打开即触发）⇒ 重启一次设备后应能正常生效。
 
-**常态顺序复验（模拟开机，2026-09-25）**：
+## 未决问题（仅剩真机项）
 
-```
-1) 先重启 audioserver + atlasservice（= 开机时两者先起来，缓存为空、标志为 1）
-2) 之后才让 SMC App 进程建立 → 模块注入 inject(Application#onCreate): setParameters(mss_music_only=0)
-3) 首次 setMssEnable（等价于面板打开时的第一次判定）：
-   tv.danmaku.bili → 0 ✓   com.baidu.netdisk → 0 ✓   com.heytap.music → 0 ✓
-```
-
-⇒ 重启设备后按正常流程使用即可生效，无需任何手工步骤。
-
-## 未决问题
-
-- 面板里的**实际分离效果**（人声/伴奏是否真的分开）只有人能判断；native 侧已实测放行。
-- `atlasservice` 若在运行中被单独重启，缓存会清空并重新查询——此时若 audioserver 的标志已被重置为 1，
-  会缓存成 1；需要再触发一次 App 注入（打开面板即可）。
+- hook 是否真被 LSPosed 加载进 `com.oplus.atlas`（作用域是否勾选）→ 真机看日志。
+- audioserver 是否接受 Atlas 下发的参数（静态上权限与路径都已满足）→ 真机看是否真的放行。
