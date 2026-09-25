@@ -25,8 +25,10 @@
 
 1. **禁止 root 权限操作**：不写 `/system_ext`、`/system`、`/odm`、`/data/oplus` 等系统路径，
    不做 Magisk overlay。`[提示词]`
-2. **禁止 hook 系统框架 / native**：不碰 audioserver 等系统进程、不 patch `.so`、
-   不引入 Zygisk。`[提示词]`
+2. **系统框架 / native 的边界**：不碰 audioserver 等系统进程、不引入 Zygisk/ptrace 注入。
+   **静态补丁系统库例外**：用户 2026-09-25 明确选择 native 路线后，允许以 KernelSU 模块
+   overlay 的方式给系统库打**定点补丁**（见 `docs/05-native-whitelist-unlock.md`）；
+   补丁必须：绑定目标库 sha256、只改一个函数的入口、附回滚方式、并在文档留证。`[提示词]`
 3. **禁止修改目标 App 数据目录**（`/data/data/<目标包名>`）。`[提示词]`
 4. **只允许写本目录、上一层目录中的目标 APK 与 `~/tmp/`**，不写系统路径。`[提示词]`
 5. **需要真机操作**（安装模块、重启、开关 LSPosed、改系统设置）**一律交用户执行**并等待反馈，
