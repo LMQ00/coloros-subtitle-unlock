@@ -127,6 +127,13 @@ return true;
 ⇒ **Java 侧 `setParameters` 的参数确实会进入 `AudioFlingerExtImpl::oplusSetParameters`**，
 `mss_music_only=0` 同样会被处理。该函数处理到 0x50944（`wakeClientByUid` 起始）为止。
 
+**拒绝位置的反证**：`setMssEnable` 的调用方权限检查 `isAllowedFindSpservice()`（0x14500）
+用 `IPCThreadState::getCallingUid()` 放行 uid 1000（system）与 0x411，否则 `checkPermission` 查
+`com.oplus.permission.safe.MEDIA`；**早退分支不写 `*ret`**（AIDL out 参数初值 0 → 调用方会看到「成功」）。
+而现象是 App 弹「当前应用暂不支持声音分轨」，即拿到非 0 ——
+⇒ 代码必然走到了 0x1b404 那个写非 0 的分支，即 `isAllowedFindSpservice()` 通过、失败点就是
+`isVocalAdjustSupported`。因此「把 `mss_music_only` 置 0」是充分条件，无需再怀疑调用方权限。
+
 ### 4. 白名单是 XML 数据
 
 - 文件：
