@@ -243,14 +243,14 @@ return true;
 |---|---|
 | 进程 | `com.oplus.smartmediacontroller`（声音分轨 App 自身） |
 | 依据 | 其 manifest 声明 `android.permission.MODIFY_AUDIO_SETTINGS` |
-| 方法 | `com.oplus.smartmediacontroller.MssService#onStartCommand` |
-| 行为 | 进入时调 `AudioManager.setParameters("mss_music_only=0")` |
+| 方法 | `android.app.Application#onCreate`（进程建立即注入）＋ `MssService#onStartCommand`（每次面板打开再注入一次） |
+| 行为 | 调 `AudioManager.setParameters("mss_music_only=0")` |
 
 为什么需要它：LSPosed 的 hook 只随**目标进程启动**注入。`OplusAtlasService` 由系统在开机时拉起，
 若模块是开机之后才装的，Atlas 进程不重建就永远没有 hook——实测本机开机 48.3 小时、
 模块中途安装，因此 Atlas 路径全部无效。而 `MssService.onStartCommand` 每次打开分轨面板都会走，
 且**早于** App 调 `setMssEnable`，所以参数在 native 判定前已置 0；只需让这个 App 的进程重建一次
-（强停或重启该 App），不必重启整机。日志：`MssService: setParameters(mss_music_only=0) #N`。
+（强停或重启该 App）。日志：`inject(Application#onCreate): setParameters(mss_music_only=0)`。
 
 效果：`OplusAtlasService` 的 `setParameters("mss_music_only=0")` 分支被满足
 → audioserver 参数置 0 → `isMssMusicOnly()` 为 false
@@ -345,14 +345,54 @@ return true;
   以及 `update_hires=1;mss_music_only=0`（value 语义应落到 mss 分支）——**两者都没让 gate 放行**。
 - 组合串 `update_hires=1;mss_music_only=0` 甚至没有出现在 AudioFlinger 的 KVP 记录里（疑似被过滤）。
 
-**结论**：在本机 ColorOS 16 上，`mss_music_only` 这个音频参数**不影响** `isMssMusicOnly()` 的结果
-（判定实际等效于「attr 含 bit4 即拒绝」）。`OplusAtlasService` 里那段 `setParameters("mss_music_only=0")`
-在本 ROM 上是一条死路径。⇒ 走参数路线无法解除限制。
+**结论（已被下一节修正）**：当时看起来「参数无效」，实际原因是 `isMssMusicOnly()` 的**缓存**——
+详见下一节「真正的机制」。参数本身是有效的，但生效顺序有严格要求。
 
-**仍然可行且不碰 native 的路线**：改白名单数据，把目标包名的 attribute 去掉 bit4（17 → 3），
+**仍然可行且不碰 native 的备选路线**：改白名单数据，把目标包名的 attribute 去掉 bit4（17 → 3），
 使 `isVocalAdjustSupported` 根本不咨询 `isMssMusicOnly()`。该改动需要写
 `/data/oplus/multimedia/Multimedia_Daemon_Online_List.xml`（并把 `<version>` 提到高于内置的 `20260703`），
 或对 `/system_ext/etc/Multimedia_Daemon_List.xml` 做 overlay —— 两者都属系统数据/系统分区，**未获授权，未实施**。
+
+## 真正的机制：`isMssMusicOnly()` 有缓存，且缓存宿主是 `atlasservice`
+
+前面「参数无效」的结论只对了一半——参数本身有效，但**读它的一方把结果缓存了**。
+
+1. `SpecailizerPLService` **不在 audioserver 里**，而在原生进程 `/system_ext/bin/atlasservice`（init 服务，ppid=1）。
+   它加载 `libSpecailizerPLService.so` + `libimmlistservice.so`，但**不加载** `libaudioflingerextimpl.so`；
+   它注册的 clientID 1 是 **audioserver 里那个 `SpatilaizerNativeClient` 的 binder 代理**（跨进程调用）。
+2. `isMssMusicOnly()`（0x1ad74）实现：
+
+   ```
+   1ada0: ldrb w8, [x0, #0x228]      ; 缓存有效标志
+   1ada4: tbz  w8, #0x0, 0x1b014     ; 为 0 → 直接返回缓存
+   …（实时向 client 发 event 26）…
+   1af98: strb wzr, [x19, #0x228]    ; 用完把标志清零
+   1af9c: strb w22, [x19, #0x229]    ; 结果写入缓存
+   1b014: ldrb w22, [x19, #0x229]    ; 缓存命中路径
+   1b028: and  w0, w22, #0x1
+   ```
+
+   构造函数 `mov w21,#1; strh w21,[x19,#0x228]` → 初始 `[0x228]=1, [0x229]=0`：
+   **只有 `atlasservice` 进程里 SP 服务对象的第一次调用会真正查询，之后永远用缓存**；
+   `[0x228]` 只在构造函数里重置 ⇒ **缓存只在 `atlasservice` 重启时失效**。
+
+3. ⇒ 生效顺序必须是：audioserver 重启（标志回默认 1）→ 在 audioserver 侧把标志置 0 →
+   **重启 `atlasservice`**（清缓存）→ 首次查询读到 0 → 放行。
+   若顺序反了（先查后置 0），缓存会固化 1，之后无论怎么改参数都不生效——这正是前期多次失败的原因。
+
+**实测验证（2026-09-25）**：
+
+```
+# 顺序：重启 audioserver → 模块注入 mss_music_only=0 → 重启 atlasservice
+service call SpecailizerPLService 42 s16 tv.danmaku.bili i32 1     → 0  ✓
+service call SpecailizerPLService 42 s16 com.baidu.netdisk i32 1   → 0  ✓
+service call SpecailizerPLService 43 s16 tv.danmaku.bili           → 1（已启用）✓
+native 日志：isVocalAdjustSupported: supportType=17 → setMssEnableInt --- tv.danmaku.bili[1]
+```
+
+**对模块的含义**：开机后 `atlasservice` 的缓存是空的（`[0x228]=1`），只要**在第一次 `setMssEnable` 之前**
+把 audioserver 的标志置 0 即可。模块在 SMC 进程 `MssService.onStartCommand` 入口注入，正好早于
+App 调 `setMssEnable`（面板打开即触发）⇒ 重启一次设备后应能正常生效。
 
 ## 未决问题（仅剩真机项）
 
