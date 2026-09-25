@@ -155,6 +155,20 @@ public class MainHook implements IXposedHookLoadPackage {
      * 好处：不必重启 Atlas 进程（也就不用重启整机），只要这个 App 的进程重建一次即可。
      */
     private static void hookSmcInjectParam(ClassLoader cl) {
+        // 最早的注入时机：App 进程一建立就下发，保证早于第一次 setMssEnable
+        try {
+            XposedHelpers.findAndHookMethod(
+                    "android.app.Application", cl, "onCreate",
+                    new XC_MethodHook() {
+                        @Override
+                        protected void afterHookedMethod(MethodHookParam param) {
+                            injectMssMusicOnly(param.thisObject, "Application#onCreate");
+                        }
+                    });
+            log("hooked Application#onCreate (early inject)");
+        } catch (Throwable t) {
+            log("hook Application#onCreate failed: " + t);
+        }
         try {
             XposedHelpers.findAndHookMethod(
                     "com.oplus.smartmediacontroller.MssService", cl, "onStartCommand",
@@ -164,26 +178,30 @@ public class MainHook implements IXposedHookLoadPackage {
 
                         @Override
                         protected void beforeHookedMethod(MethodHookParam param) {
-                            try {
-                                Context ctx = (Context) param.thisObject;
-                                AudioManager am = (AudioManager) ctx.getSystemService(Context.AUDIO_SERVICE);
-                                if (am == null) {
-                                    log("MssService: AudioManager unavailable");
-                                    return;
-                                }
-                                am.setParameters("mss_music_only=0");
-                                injected++;
-                                if (injected <= 5) {
-                                    log("MssService: setParameters(mss_music_only=0) #" + injected);
-                                }
-                            } catch (Throwable t) {
-                                log("MssService inject failed: " + t);
+                            if (injected++ < 5) {
+                                injectMssMusicOnly(param.thisObject, "MssService#onStartCommand");
                             }
                         }
                     });
             log("hooked MssService#onStartCommand");
         } catch (Throwable t) {
             log("hookSmcInjectParam failed: " + t);
+        }
+    }
+
+    /** 在 SMC 进程内下发 {@code mss_music_only=0}（该 App 持 MODIFY_AUDIO_SETTINGS）。 */
+    private static void injectMssMusicOnly(Object contextOwner, String where) {
+        try {
+            Context ctx = (Context) contextOwner;
+            AudioManager am = (AudioManager) ctx.getSystemService(Context.AUDIO_SERVICE);
+            if (am == null) {
+                log("inject(" + where + "): AudioManager unavailable");
+                return;
+            }
+            am.setParameters("mss_music_only=0");
+            log("inject(" + where + "): setParameters(mss_music_only=0)");
+        } catch (Throwable t) {
+            log("inject(" + where + ") failed: " + t);
         }
     }
 
