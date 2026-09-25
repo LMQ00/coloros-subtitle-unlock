@@ -1,0 +1,6 @@
+id=mss_native_unlock
+name=ColorOS 声音分轨解锁 (native)
+version=v1.0
+versionCode=1
+author=pi
+description=解除「声音分轨」的 mss-whitelist 限制：覆盖 libSpecailizerPLService.so，把 isVocalAdjustSupported() 改为直接 return true，使任意 App 都能启用分轨。
