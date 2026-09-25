@@ -321,6 +321,39 @@ return true;
   需要重启 Atlas（或设备）重新下发。设备重启时 audioserver 先起、Atlas 后起 → 正常。
 - **仅白名单内**：见上文「范围限制」。
 
+## 为什么 `mss_music_only` 路线在本 ROM 上无效（实测结论）
+
+用 root 直接调 binder + 模块内探针做了完整对照实验（2026-09-25）：
+
+| 实验 | 结果 |
+|---|---|
+| `service call SpecailizerPLService 42 s16 tv.danmaku.bili i32 1` | `-1`；native 日志 `isVocalAdjustSupported: supportType=17` + `not support vocal adjust!` |
+| 同上，`com.heytap.music`（attr 3） | `0`；`supportType=3` → `setMssEnableInt` |
+| 同上，`com.spotify.music`（attr 2） | `-1`；`supportType=2`（bit0 未置） |
+| 模块在 SMC 进程内发 `setParameters("mss_music_only=0")` | 日志有注入、`dumpsys media.audio_flinger` 有 `KVP received: mss_music_only=0` |
+| **对照探针**：发 `setParameters("holoDeviceCompatState=0")` | **ext 日志出现** `AudioFlingerExtImpl: oplusSetParameters mIsUnsupHoloBt = 0, …` |
+
+⇒ App 发的参数**确实**进入了 `AudioFlingerExtImpl::oplusSetParameters`（同一函数），
+但 `mss_music_only=0` 之后 gate 依旧拒绝 bilibili。
+
+进一步排查（均已排除）：
+
+- `isMssMusicOnly()` 的客户端就是 audioserver 的 `SpatilaizerNativeClient`：`callClient:clientID:1 exist:1, event:18, isOneWay:0`（同步调用）。
+- `onCallback` 里 `[owner+0x512]` 的 owner 确认是 `AudioFlingerExtImpl`（同一函数还用 `[owner+0x163]`，
+  而 `0x163` 是 ext 自己的字段）。
+- 链式判断两种语义都试过：只发 `mss_music_only=0`（status 语义应落到 mss 分支）、
+  以及 `update_hires=1;mss_music_only=0`（value 语义应落到 mss 分支）——**两者都没让 gate 放行**。
+- 组合串 `update_hires=1;mss_music_only=0` 甚至没有出现在 AudioFlinger 的 KVP 记录里（疑似被过滤）。
+
+**结论**：在本机 ColorOS 16 上，`mss_music_only` 这个音频参数**不影响** `isMssMusicOnly()` 的结果
+（判定实际等效于「attr 含 bit4 即拒绝」）。`OplusAtlasService` 里那段 `setParameters("mss_music_only=0")`
+在本 ROM 上是一条死路径。⇒ 走参数路线无法解除限制。
+
+**仍然可行且不碰 native 的路线**：改白名单数据，把目标包名的 attribute 去掉 bit4（17 → 3），
+使 `isVocalAdjustSupported` 根本不咨询 `isMssMusicOnly()`。该改动需要写
+`/data/oplus/multimedia/Multimedia_Daemon_Online_List.xml`（并把 `<version>` 提到高于内置的 `20260703`），
+或对 `/system_ext/etc/Multimedia_Daemon_List.xml` 做 overlay —— 两者都属系统数据/系统分区，**未获授权，未实施**。
+
 ## 未决问题（仅剩真机项）
 
 - hook 是否真被 LSPosed 加载进 `com.oplus.atlas`（作用域是否勾选）→ 真机看日志。
