@@ -28,6 +28,8 @@
 
 - `com.coloros.accessibilityassistant` —— 字幕限制
 - `com.oplus.atlas` —— 分轨限制（`OplusAtlasService` 在此进程决定是否下发 `mss_music_only=0`）
+- `com.oplus.smartmediacontroller` —— 分轨 App 自身，持 `MODIFY_AUDIO_SETTINGS`，
+  在 `MssService` 启动时直接下发参数（不依赖 Atlas 进程重建）
 
 ## 产物
 

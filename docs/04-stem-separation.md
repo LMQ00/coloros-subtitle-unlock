@@ -230,6 +230,21 @@ return true;
 重启把参数重置回构造函数默认值 1 时，兜底会在下一次参数下发（Atlas 内共 58 处）重新置 0。
 只作用于 Atlas 进程，日志用 `append mss_music_only=0 -> "..."` 与主路径区分。
 
+**第三条路径：目标 App 自己下发（不需要重启 Atlas）**
+
+| 项 | 值 |
+|---|---|
+| 进程 | `com.oplus.smartmediacontroller`（声音分轨 App 自身） |
+| 依据 | 其 manifest 声明 `android.permission.MODIFY_AUDIO_SETTINGS` |
+| 方法 | `com.oplus.smartmediacontroller.MssService#onStartCommand` |
+| 行为 | 进入时调 `AudioManager.setParameters("mss_music_only=0")` |
+
+为什么需要它：LSPosed 的 hook 只随**目标进程启动**注入。`OplusAtlasService` 由系统在开机时拉起，
+若模块是开机之后才装的，Atlas 进程不重建就永远没有 hook——实测本机开机 48.3 小时、
+模块中途安装，因此 Atlas 路径全部无效。而 `MssService.onStartCommand` 每次打开分轨面板都会走，
+且**早于** App 调 `setMssEnable`，所以参数在 native 判定前已置 0；只需让这个 App 的进程重建一次
+（强停或重启该 App），不必重启整机。日志：`MssService: setParameters(mss_music_only=0) #N`。
+
 效果：`OplusAtlasService` 的 `setParameters("mss_music_only=0")` 分支被满足
 → audioserver 参数置 0 → `isMssMusicOnly()` 为 false
 → `tv.danmaku.bili`（attr 17）通过 `isVocalAdjustSupported` → `setMssEnable` 成功 → 分轨启用。

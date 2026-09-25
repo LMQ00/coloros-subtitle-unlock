@@ -5,7 +5,7 @@
 | 功能 | 目标 App | 原理 |
 |---|---|---|
 | 字幕每月 120 分钟限制 | `com.coloros.accessibilityassistant`（AI 语音摘记） | 丢弃云端限制状态码 `3000803` → `-2020`，并改写「本月剩余时长」 |
-| 声音分轨限音乐 App | `com.oplus.smartmediacontroller`（声音分轨） | 在 `com.oplus.atlas` 进程内让特性 `oplus.software.audio.mss_music_only` 判定为 false，使 Atlas 下发 `mss_music_only=0`；并对该进程内所有 `AudioManager.setParameters` 追加该参数作兜底 |
+| 声音分轨限音乐 App | `com.oplus.smartmediacontroller`（声音分轨） | 三条注入路径（均在 Java 层、不碰 native）：Atlas 内让特性 `oplus.software.audio.mss_music_only` 判定为 false；Atlas 内所有 `setParameters` 追加该参数；**目标 App 自身**在 `MssService` 启动时直接下发 |
 
 > 逆向对象（在仓库上一层）：`../AI 语音摘记_16.3.12.apk`（versionCode 1603012）、
 > `../声音分轨_16.1.20.apk`（versionCode 16001020）
@@ -29,6 +29,9 @@
   让该特性判定为 false（主路径，Atlas 自己下发 `mss_music_only=0`），
   并给该进程内所有 `AudioManager.setParameters` 追加 `;mss_music_only=0`（兜底，
   同时覆盖 audioserver 重启后参数回落为默认 1 的情形）。
+  这两条都要求 **Atlas 进程重建过**（LSPosed 只在目标进程启动时注入 hook）。
+  因此还有第三条路径：在「声音分轨」App 自身进程（它也持 `MODIFY_AUDIO_SETTINGS`）的
+  `MssService.onStartCommand` 里直接下发参数——面板每次打开都会走，**不必重启 Atlas 或整机**。
 
 ## 构建
 
@@ -42,9 +45,11 @@
 1. **只有从旧版（未固定签名的构建）升级时才需要先卸载一次**：
    `/system/bin/pm uninstall com.lmq.coloros.subtitle`
    固定签名之后，后续构建可直接覆盖安装。
-2. 安装 `artifacts/coloros-subtitle-unlock-v1.4.apk`（含分轨主路径 + 兜底）。
-3. LSPosed 中启用模块，作用域勾选「AI 语音摘记」与「Atlas」（`com.oplus.atlas`）。
-4. 重启设备（或分别强制停止并重启这两个 App）。
+2. 安装 `artifacts/coloros-subtitle-unlock-v1.5.apk`（含分轨三条注入路径）。
+3. LSPosed 中启用模块，作用域勾选「AI 语音摘记」+「Atlas」+「声音分轨」三个。
+4. 让被 hook 的进程重建一次（LSPosed 只在进程启动时注入）：
+   - 只测分轨 → 强停「声音分轨」App 即可（`su -c "am force-stop com.oplus.smartmediacontroller"`）；
+   - 要字幕也生效 → 重启整机。
 
 ## 构建与签名
 

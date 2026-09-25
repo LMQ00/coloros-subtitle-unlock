@@ -1,5 +1,8 @@
 package com.lmq.coloros.subtitle;
 
+import android.content.Context;
+import android.content.Intent;
+import android.media.AudioManager;
 import android.util.Log;
 
 import de.robv.android.xposed.IXposedHookLoadPackage;
@@ -41,6 +44,7 @@ public class MainHook implements IXposedHookLoadPackage {
     private static final String TAG = "ColorOSSubtitleUnlock";
     private static final String TARGET_PKG = "com.coloros.accessibilityassistant";
     private static final String TARGET_PKG_ATLAS = "com.oplus.atlas";
+    private static final String TARGET_PKG_SMC = "com.oplus.smartmediacontroller";
 
     /** 设备特性：声明后 OplusAtlasService 不再下发 mss_music_only=0（即「分轨仅音乐」）。 */
     private static final String FEATURE_MSS_MUSIC_ONLY = "oplus.software.audio.mss_music_only";
@@ -63,6 +67,11 @@ public class MainHook implements IXposedHookLoadPackage {
             log("module loading in " + lp.packageName + " (pid=" + android.os.Process.myPid() + ")");
             hookMssMusicOnlyFeature(lp.classLoader);
             hookAtlasSetParameters(lp.classLoader);
+            return;
+        }
+        if (TARGET_PKG_SMC.equals(lp.packageName)) {
+            log("module loading in " + lp.packageName + " (pid=" + android.os.Process.myPid() + ")");
+            hookSmcInjectParam(lp.classLoader);
             return;
         }
         if (!TARGET_PKG.equals(lp.packageName)) {
@@ -133,6 +142,48 @@ public class MainHook implements IXposedHookLoadPackage {
             log("hooked AudioManager#setParameters (fallback)");
         } catch (Throwable t) {
             log("hookAtlasSetParameters failed: " + t);
+        }
+    }
+
+    /**
+     * 第三条注入路径：在目标 App（`com.oplus.smartmediacontroller`）自己的进程里下发参数。
+     *
+     * 该 App 的 manifest 声明了 `android.permission.MODIFY_AUDIO_SETTINGS`，所以它自己就能
+     * 调用 `AudioManager.setParameters`。注入点选 `MssService.onStartCommand`——面板每次被拉起
+     * 都会走这里，且**早于** App 调 `setMssEnable`，因此参数在 native 判定前已置 0。
+     *
+     * 好处：不必重启 Atlas 进程（也就不用重启整机），只要这个 App 的进程重建一次即可。
+     */
+    private static void hookSmcInjectParam(ClassLoader cl) {
+        try {
+            XposedHelpers.findAndHookMethod(
+                    "com.oplus.smartmediacontroller.MssService", cl, "onStartCommand",
+                    Intent.class, int.class, int.class,
+                    new XC_MethodHook() {
+                        private int injected = 0;
+
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) {
+                            try {
+                                Context ctx = (Context) param.thisObject;
+                                AudioManager am = (AudioManager) ctx.getSystemService(Context.AUDIO_SERVICE);
+                                if (am == null) {
+                                    log("MssService: AudioManager unavailable");
+                                    return;
+                                }
+                                am.setParameters("mss_music_only=0");
+                                injected++;
+                                if (injected <= 5) {
+                                    log("MssService: setParameters(mss_music_only=0) #" + injected);
+                                }
+                            } catch (Throwable t) {
+                                log("MssService inject failed: " + t);
+                            }
+                        }
+                    });
+            log("hooked MssService#onStartCommand");
+        } catch (Throwable t) {
+            log("hookSmcInjectParam failed: " + t);
         }
     }
 

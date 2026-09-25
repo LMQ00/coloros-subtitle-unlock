@@ -5,5 +5,7 @@
         <item>com.coloros.accessibilityassistant</item>
         <!-- Atlas：声音分轨「仅音乐」开关（OplusAtlasService 在此进程决定是否下发 mss_music_only=0） -->
         <item>com.oplus.atlas</item>
+        <!-- 声音分轨 App 自身：持 MODIFY_AUDIO_SETTINGS，可在 MssService 启动时直接下发参数 -->
+        <item>com.oplus.smartmediacontroller</item>
     </string-array>
 </resources>
