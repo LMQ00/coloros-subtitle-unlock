@@ -7,7 +7,7 @@
 | 功能 | 目标 App | 限制 | 状态 |
 |---|---|---|---|
 | 字幕每月 120 分钟 | `com.coloros.accessibilityassistant`（AI 语音摘记） | 云端状态码 `3000803` → 客户端停字幕 | 模块已实现，待真机确认 |
-| 声音分轨限音乐 App | `com.oplus.smartmediacontroller`（声音分轨） | native `mss-whitelist` + `mss_music_only` 参数 | 模块已实现，待真机确认 |
+| 声音分轨限音乐 App | `com.oplus.smartmediacontroller`（声音分轨） | native `mss-whitelist` + `mss_music_only`（结果缓存在 atlasservice） | 判定链已通（binder 探针实测放行），待真机看面板效果 |
 
 - 被逆向的目标 APK 在**上一层目录**：`../AI 语音摘记_16.3.12.apk`、`../声音分轨_16.1.20.apk`
 - 模块形态：LSPosed / Xposed（Java hook），作用域见 `docs/02-module-design.md`
