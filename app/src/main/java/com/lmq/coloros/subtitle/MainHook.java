@@ -175,6 +175,9 @@ public class MainHook implements IXposedHookLoadPackage {
                                 injected++;
                                 if (injected <= 5) {
                                     log("MssService: setParameters(mss_music_only=0) #" + injected);
+                                    // 诊断 3：按链式判断的真实语义，带上非 0 的 update_hires 才能落到 mss 分支
+                                    am.setParameters("update_hires=1;mss_music_only=0");
+                                    log("probe setParameters(update_hires=1;mss_music_only=0) done");
                                     // 诊断 1：读回参数（ext 的 getParameters 只处理特定 key）
                                     log("probe getParameters(\"mss_music_only\")=\""
                                             + am.getParameters("mss_music_only")
