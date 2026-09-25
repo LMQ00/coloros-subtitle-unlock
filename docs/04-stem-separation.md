@@ -268,8 +268,8 @@ return true;
 
 ## 生效条件与验证
 
-0. 安装 `artifacts/coloros-subtitle-unlock-v1.4.apk`；若设备上装的是旧签名构建
-   （v1.2），需先 `/system/bin/pm uninstall com.lmq.coloros.subtitle`（v1.3 → v1.4 可直接覆盖）。
+0. 安装 `artifacts/coloros-subtitle-unlock-v1.5.apk`；只有从 v1.2（旧签名）升级才需先
+   `/system/bin/pm uninstall com.lmq.coloros.subtitle`，v1.3/v1.4 → v1.5 可直接覆盖。
 1. LSPosed 启用模块，作用域勾选「AI 语音摘记」+「Atlas」(`com.oplus.atlas`)。
 2. 重启设备，或强停 `com.oplus.atlas` 让其重建（`setParameters` 在 Atlas 初始化时执行一次）。
 3. bilibili 播放音频 → 打开「声音分轨」→ 不再弹「当前应用暂不支持声音分轨」，
