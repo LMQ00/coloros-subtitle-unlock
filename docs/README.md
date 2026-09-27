@@ -11,7 +11,7 @@
 | `02-module-design.md` | 字幕解锁的 hook 设计（hook 哪些点、为什么） |
 | `03-pitfalls.md` | 逆向与构建中踩过的坑、如何规避 |
 | `04-stem-separation.md` | 「声音分轨」音乐应用限定的判定链、根因与 hook 设计 |
-| `05-whitelist-unlock.md` | 解除白名单限制（纯 LSPosed，system_server 内重写白名单），让任意 App 可分轨 |
+| `05-stem-any-app.md` | 让任意 App 可分轨：system_server 内下发 `mss_music_only=0` + `ctl.restart atlasservice`；含已放弃的白名单方案证据 |
 | `../AGENTS.md` | 工程约定（硬性约束、构建、作用域、文档同步） |
 | `archive/` | 历史快照（旧版本文档），已冻结，不维护 |
 | `../` | 模块源码（GitHub Actions 编译） |
@@ -22,7 +22,7 @@
 |---|---|---|---|
 | 字幕 120 分钟限制 | `com.coloros.accessibilityassistant` | 云端状态码 `3000803` → 客户端响应 | 模块已实现，待真机确认 |
 | 声音分轨音乐限定 | `com.oplus.smartmediacontroller` | native `mss-whitelist` + `mss_music_only` 参数 | 已验证（用户实测可用） |
-| 分轨「任意 App」 | 同上 | `mss-whitelist` 白名单 | 已实现（system_server 重写白名单 + 触发重载），待真机确认 |
+| 分轨「任意 App」 | 同上 | audioserver `mss_music_only` 参数 | 已实现并实测放行任意包；待真机重启验证 |
 
 ## 模块作用域
 
@@ -32,7 +32,7 @@
 - `com.oplus.atlas` —— 分轨限制（`OplusAtlasService` 在此进程决定是否下发 `mss_music_only=0`）
 - `com.oplus.smartmediacontroller` —— 分轨 App 自身，持 `MODIFY_AUDIO_SETTINGS`，
   在 `MssService` 启动时直接下发参数（不依赖 Atlas 进程重建）
-- `android`（System Framework）—— 在 system_server 内重写分轨白名单，解除白名单限制
+- `android`（System Framework）—— 在 system_server 内下发 `mss_music_only=0` 并让 init 重启 `atlasservice`，解除「仅音乐」限制
 
 ## 产物
 
