@@ -2,20 +2,9 @@ package com.lmq.coloros.subtitle;
 
 import android.content.Context;
 import android.content.Intent;
-import android.content.pm.PackageInfo;
-import android.content.pm.PackageManager;
 import android.media.AudioManager;
-import android.os.IBinder;
-import android.os.Parcel;
 import android.util.Log;
 
-import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
 
 import de.robv.android.xposed.IXposedHookLoadPackage;
 import de.robv.android.xposed.XC_MethodHook;
@@ -57,17 +46,13 @@ public class MainHook implements IXposedHookLoadPackage {
     private static final String TARGET_PKG = "com.coloros.accessibilityassistant";
     private static final String TARGET_PKG_ATLAS = "com.oplus.atlas";
     private static final String TARGET_PKG_SMC = "com.oplus.smartmediacontroller";
-    /** System Framework（system_server）：只有它的 uid(1000)+SELinux 域能写白名单文件。 */
+    /** System Framework（system_server）：能写 audioserver 参数、也能让 init 重启原生服务。 */
     private static final String TARGET_PKG_SYSTEM = "android";
 
-    /** 分轨白名单的「在线更新」文件（`system:system 644`）。 */
-    private static final String ONLINE_LIST_PATH = "/data/oplus/multimedia/Multimedia_Daemon_Online_List.xml";
-    /** 写进去的版本号，必须高于内置 `/system_ext/etc/Multimedia_Daemon_List.xml` 的 version。 */
-    private static final String LIST_VERSION = "20991231";
-    /** attribute=3：bit0 置位（支持人声调节）、bit4 清零（不受「仅音乐」限制）。 */
-    private static final String LIST_ATTRIBUTE = "3";
-    /** IMMListService 的「重载列表」transaction。 */
-    private static final int TRANSACTION_MMLIST_RELOAD = 1;
+    /** audioserver 侧参数名：1 = 分轨仅限音乐应用，0 = 不限制。 */
+    private static final String PARAM_MSS_MUSIC_ONLY = "mss_music_only";
+    /** 缓存 {@code isMssMusicOnly()} 的原生进程；改参数后必须重启它才能重新取值。 */
+    private static final String SERVICE_ATLASSERVICE = "atlasservice";
 
     /** 设备特性：声明后 OplusAtlasService 不再下发 mss_music_only=0（即「分轨仅音乐」）。 */
     private static final String FEATURE_MSS_MUSIC_ONLY = "oplus.software.audio.mss_music_only";
@@ -94,7 +79,7 @@ public class MainHook implements IXposedHookLoadPackage {
         }
         if (TARGET_PKG_SYSTEM.equals(lp.packageName)) {
             log("module loading in system_server (System Framework)");
-            startWhitelistRewrite(lp.classLoader);
+            startStemUnlock(lp.classLoader);
             return;
         }
         if (TARGET_PKG_SMC.equals(lp.packageName)) {
@@ -217,161 +202,100 @@ public class MainHook implements IXposedHookLoadPackage {
         }
     }
 
-    /** 在 SMC 进程内下发 {@code mss_music_only=0}（该 App 持 MODIFY_AUDIO_SETTINGS）。 */
-    private static void injectMssMusicOnly(Object contextOwner, String where) {
+    /**
+     * 在指定进程内下发 {@code mss_music_only=0}（调用者须持 MODIFY_AUDIO_SETTINGS：
+     * SMC App 与 system_server 都有）。
+     *
+     * @return 是否调用成功（不代表 audioserver 已生效，生效还要求 atlasservice 重启清缓存）
+     */
+    private static boolean injectMssMusicOnly(Object contextOwner, String where) {
         try {
             Context ctx = (Context) contextOwner;
             AudioManager am = (AudioManager) ctx.getSystemService(Context.AUDIO_SERVICE);
             if (am == null) {
                 log("inject(" + where + "): AudioManager unavailable");
-                return;
+                return false;
             }
-            am.setParameters("mss_music_only=0");
-            log("inject(" + where + "): setParameters(mss_music_only=0)");
+            am.setParameters(PARAM_MSS_MUSIC_ONLY + "=0");
+            log("inject(" + where + "): setParameters(" + PARAM_MSS_MUSIC_ONLY + "=0)");
+            return true;
         } catch (Throwable t) {
             log("inject(" + where + ") failed: " + t);
+            return false;
         }
     }
 
-    // ================= 分轨白名单重写（system_server） =================
+    // ================= 声音分轨：解除「仅音乐」限制（system_server） =================
 
     /**
-     * 在 system_server 内把分轨白名单改成「所有已安装应用」。
+     * 判定链全在 native、不经过 Java：
      *
-     * 判定链全在 native（`atlasservice` 查询、`mmlistservice` 供数据），Java 唯一能插手的地方是
-     * 白名单**数据**：`/data/oplus/multimedia/Multimedia_Daemon_Online_List.xml`（`system:system 644`）。
-     * 写它需要 uid=1000 + SELinux 域允许 `write oplus_multimedia_file`，只有 system_server 同时满足
-     * （实测 app uid 的 platform_app 进程被 DAC 挡住）。
+     * <pre>
+     * SpecailizerPLService#setMssEnable(pkg,1)
+     *   → isVocalAdjustSupported(pkg)   libSpecailizerPLService.so，跑在 atlasservice 进程
+     *       → 查 mss-whitelist：attribute bit4 置位的包再问
+     *       → isMssMusicOnly()          ← 取 audioserver 的 mss_music_only 参数（机型默认 1）
+     *                                   ← **在 atlasservice 进程内缓存**，只有进程重启才重新取值
+     * </pre>
+     *
+     * 所以「任意 App 可分轨」只需把 {@code mss_music_only} 置 0、并让 atlasservice 重新取值：
+     *
+     * <ol>
+     *   <li>system_server（uid 1000，持 MODIFY_AUDIO_SETTINGS）调
+     *       {@code AudioManager.setParameters("mss_music_only=0")} ⇒ 写进 audioserver；</li>
+     *   <li>{@code SystemProperties.set("ctl.restart","atlasservice")} 让 init 重启它 ⇒ 缓存失效，
+     *       之后首次查询读到 0 ⇒ 放行任意 App。</li>
+     * </ol>
+     *
+     * 第 2 步的依据（设备策略实测）：{@code (allow system_server ctl_restart_prop (property_service (set)))} ✓；
+     * 而 {@code process signal} 对 atlasservice/mmlistservice **不允许** ✗（kill 走不通，只能走 init）。
      */
-    private static void startWhitelistRewrite(final ClassLoader cl) {
+    private static void startStemUnlock(final ClassLoader cl) {
         Thread t = new Thread(new Runnable() {
             @Override
             public void run() {
-                // PackageManager 与文件系统在 system_server 早期可能尚未就绪，重试若干次
-                for (int i = 0; i < 30; i++) {
+                // audioserver / AudioService 就绪要时间，失败重试（最多 5 分钟）
+                for (int i = 0; i < 60; i++) {
                     try {
-                        if (rewriteWhitelist(cl)) {
+                        Context ctx = systemContext(cl);
+                        if (ctx != null && injectMssMusicOnly(ctx, "system_server")) {
+                            restartInitService(SERVICE_ATLASSERVICE);
+                            log("stem: mss_music_only=0 已下发，"
+                                    + SERVICE_ATLASSERVICE + " 已重启（缓存失效 ⇒ 任意 App 放行）");
                             return;
                         }
                     } catch (Throwable th) {
-                        log("whitelist rewrite attempt " + i + " failed: " + th);
+                        log("stem attempt " + i + " failed: " + th);
                     }
                     try {
-                        Thread.sleep(10_000L);
+                        Thread.sleep(5_000L);
                     } catch (InterruptedException e) {
                         return;
                     }
                 }
-                log("whitelist rewrite gave up");
+                log("stem: gave up");
             }
-        }, "mss-whitelist-rewrite");
+        }, "mss-stem-unlock");
         t.setDaemon(true);
         t.start();
     }
 
-    /** @return 是否已完成（成功或无需处理） */
-    private static boolean rewriteWhitelist(ClassLoader cl) throws Throwable {
-        File f = new File(ONLINE_LIST_PATH);
-        if (!f.exists()) {
-            log("whitelist: " + ONLINE_LIST_PATH + " 不存在，跳过");
-            return true;
-        }
-        String xml = readAll(f);
-        int i = xml.indexOf("<mss-whitelist>");
-        int j = xml.indexOf("</mss-whitelist>");
-        if (i < 0 || j < i) {
-            log("whitelist: 未找到 <mss-whitelist> 段，跳过");
-            return true;
-        }
-        List<String> pkgs = installedPackages(cl);
-        if (pkgs.isEmpty()) {
-            log("whitelist: 未枚举到已安装应用，稍后重试");
-            return false;
-        }
-        StringBuilder sb = new StringBuilder("<mss-whitelist>");
-        for (String p : pkgs) {
-            sb.append("\n        <name>").append(p).append("</name>")
-              .append("\n        <attribute>").append(LIST_ATTRIBUTE).append("</attribute>");
-        }
-        sb.append("\n    ");
-        String out = xml.substring(0, i) + sb + xml.substring(j);
-        out = out.replaceFirst("<version>\\s*\\d+\\s*</version>",
-                "<version>" + LIST_VERSION + "</version>");
-        writeAll(f, out);
-        log("whitelist: 已写入 " + pkgs.size() + " 个包（attribute=" + LIST_ATTRIBUTE
-                + ", version=" + LIST_VERSION + "）");
-        reloadList(cl);
-        return true;
+    /** system_server 的 Context（{@code ActivityThread.currentActivityThread().getSystemContext()}）。 */
+    private static Context systemContext(ClassLoader cl) {
+        Class<?> at = XposedHelpers.findClass("android.app.ActivityThread", cl);
+        Object thread = XposedHelpers.callStaticMethod(at, "currentActivityThread");
+        return (Context) XposedHelpers.callMethod(thread, "getSystemContext");
     }
 
-    private static List<String> installedPackages(ClassLoader cl) {
+    /** 让 init 重启原生服务（system_server 有 ctl_restart_prop 的 set 权限）。 */
+    private static void restartInitService(String name) {
         try {
-            Class<?> at = XposedHelpers.findClass("android.app.ActivityThread", cl);
-            Object thread = XposedHelpers.callStaticMethod(at, "currentActivityThread");
-            Object ctx = XposedHelpers.callMethod(thread, "getSystemContext");
-            PackageManager pm = ((Context) ctx).getPackageManager();
-            List<String> out = new ArrayList<String>();
-            for (PackageInfo pi : pm.getInstalledPackages(0)) {
-                if (pi != null && pi.packageName != null) {
-                    out.add(pi.packageName);
-                }
-            }
-            Collections.sort(out);
-            return out;
+            XposedHelpers.callStaticMethod(
+                    XposedHelpers.findClass("android.os.SystemProperties", null),
+                    "set", "ctl.restart", name);
+            log("restart: ctl.restart " + name);
         } catch (Throwable t) {
-            log("whitelist: 枚举应用失败: " + t);
-            return Collections.emptyList();
-        }
-    }
-
-    /** 让 `mmlistservice` 重读白名单（IMMListService transaction 1）。 */
-    private static void reloadList(ClassLoader cl) {
-        try {
-            IBinder b = (IBinder) XposedHelpers.callStaticMethod(
-                    XposedHelpers.findClass("android.os.ServiceManager", cl),
-                    "getService", "MMListService");
-            if (b == null) {
-                log("reload: 未找到 MMListService（写入将在下次开机生效）");
-                return;
-            }
-            Parcel data = Parcel.obtain();
-            Parcel reply = Parcel.obtain();
-            try {
-                data.writeInterfaceToken("IMMListService");
-                boolean ok = b.transact(TRANSACTION_MMLIST_RELOAD, data, reply, 0);
-                log("reload: transact(" + TRANSACTION_MMLIST_RELOAD + ") -> " + ok);
-            } finally {
-                data.recycle();
-                reply.recycle();
-            }
-        } catch (Throwable t) {
-            log("reload failed: " + t);
-        }
-    }
-
-    private static String readAll(File f) throws Throwable {
-        FileInputStream in = new FileInputStream(f);
-        try {
-            ByteArrayOutputStream bos = new ByteArrayOutputStream((int) f.length());
-            byte[] buf = new byte[8192];
-            int n;
-            while ((n = in.read(buf)) > 0) {
-                bos.write(buf, 0, n);
-            }
-            return new String(bos.toByteArray(), "UTF-8");
-        } finally {
-            in.close();
-        }
-    }
-
-    /** 就地截断写入（SELinux 只允许 write，不允许 rename，故不用临时文件+改名）。 */
-    private static void writeAll(File f, String content) throws Throwable {
-        FileOutputStream out = new FileOutputStream(f, false);
-        try {
-            out.write(content.getBytes("UTF-8"));
-            out.flush();
-        } finally {
-            out.close();
+            log("restart(" + name + ") failed: " + t);
         }
     }
 
