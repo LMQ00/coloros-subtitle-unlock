@@ -1,76 +1,88 @@
-# 声音分轨：让任意 App 都能用（纯 LSPosed）
+# 声音分轨：让任意 App 都能用（追加式白名单）
 
-> 前置：`04-stem-separation.md`（判定链、`mss_music_only` 与 atlasservice 缓存机制）
+> 前置：`04-stem-separation.md`（判定链、白名单与 `mss_music_only`）
 
 ## 判定链（全在 native）
 
 ```
-SpecailizerPLService#setMssEnable(pkg, 1)          AIDL transaction 42
-  → isVocalAdjustSupported(pkg)                    libSpecailizerPLService.so @0x1b0b4，跑在 atlasservice
-      → 查 mss-whitelist：attribute bit4 置位的包，再问
-      → isMssMusicOnly()                           @0x1ad74
-          ← 值 = audioserver 里 AudioFlingerExtImpl[+0x512] 的 mss_music_only 参数（机型默认 1）
-          ← **在 atlasservice 进程内缓存**（[this+0x228] 有效标志 / [this+0x229] 值），
-            构造函数只清标志，只有**进程重启**才会重新取值
+SpecailizerPLService#setMssEnable(pkg, 1)         AIDL transaction 42
+  → isVocalAdjustSupported(pkg)                  libSpecailizerPLService.so @0x1b0b4（跑在 atlasservice）
+      → 查 mss-whitelist（数据由 mmlistservice 从 XML 解析并提供）
+          不在名单内 → 拒绝（返回 ffffffff）
+          名单内且 attribute bit4 置位 → 再问 isMssMusicOnly()
+      → isMssMusicOnly()                         @0x1ad74，值 = audioserver 的 mss_music_only 参数（机型默认 1）
 ```
 
-两种放行状态（实测）：
+## ⚠️ 核心教训：不要碰 `mss_music_only`
 
-| `mss_music_only` | 判定 |
-|---|---|
-| 1（默认） | 只放行 mss-whitelist 里 attribute bit4=0 的包 ⇒ 「只能在音乐软件用」 |
-| 0 | 不再看白名单，**任意 App 放行**（chrome / 微信 均返回 0） |
-
-## 做法
-
-模块作用域加 **System Framework**，在 system_server（uid 1000，持 `MODIFY_AUDIO_SETTINGS`）内：
-
-1. `AudioManager.setParameters("mss_music_only=0")` ⇒ 写进 audioserver；
-2. `SystemProperties.set("ctl.restart", "atlasservice")` ⇒ 让 init 重启它，缓存失效 ⇒
-   此后首次查询读到 0 ⇒ 任意 App 放行。
-
-顺序不可颠倒：参数必须在 atlasservice **重启之前**写好。
-
-## 权限依据（设备策略实测）
+把该参数压成 0，**准入**确实会放开（名单外 App 也能开分轨面板，binder 探针返回 0），
+但音频策略会因此不再为该 App 强制 MSS 通路：
 
 ```
-(allow system_server ctl_restart_prop (property_service (set)))   ✓  ← 第 2 步能走通的原因
+AudioPolicyManagerExtImpl::shouldNotForceMss()      要求 [this+0xfc] == 1（构造函数用 property_get 取值）
+AudioPolicyManagerExtImpl::shouldForceMssBySession() → ListWrapperRouter::checkInListByUid("mss-whitelist", uid, ...)
+AudioPolicyManagerExtImpl::oplusForceOutputForMss()
+```
+
+真机症状与证据（用户实测）：
+
+- 面板能开、滑块能拖，**但听不出任何变化**；
+- audioserver 日志：`OplusMssAudio: chooseWhichTrackToProcess_l ... tracks[0|0] voc_adj_on[0]`
+  ⇒ 引擎**没找到要处理的音轨**，只做 `OplusMssManager: copyBufferToMix`（原样搬运）；
+- 同一时刻命令链其实是通的（`setMssEnableInt --- <pkg>[1]`、`setMssTracksGainInt`、`result:0`）。
+
+另一个坑：`AudioManager.setParameters` 会被 **`IAudioService.cacheParameters` 缓存**，
+之后每次 audioserver 重启都由 system_server 重放（实测日志
+`KVP received: mss_music_only=0;update_uidmap=...`），所以**只重启 audioserver 清不掉**，
+必须重启整机。
+
+## 正确做法：只扩名单
+
+模块作用域加 **System Framework**（`android`），在 system_server（uid 1000）内：
+
+1. 读**内置**白名单 `/system_ext/etc/Multimedia_Daemon_List.xml` 作为底稿
+   （它 version 最高、内容最新），**原样保留**其全部 `<name>/<attribute>` 条目 ——
+   绝不改写既有 attribute；
+2. 只为「已安装但不在名单内」的包**追加** `<attribute>3</attribute>`
+   （bit0 = 支持人声调节，bit4 = 0 不受「仅音乐」判定限制）；
+3. 把 `<version>` 提到 `20991231`（必须高于内置文件的 version，否则内置文件胜出），
+   写入可写的在线白名单 `/data/oplus/multimedia/Multimedia_Daemon_Online_List.xml`
+   （**就地截断写**：SELinux 只允许 `write`，不允许 `rename`）；
+4. `SystemProperties.set("ctl.restart", "mmlistservice")` 让解析白名单的原生进程重读。
+
+### 权限依据（设备策略实测）
+
+```
+(allow system_server ctl_restart_prop (property_service (set)))   ✓  ← 第 4 步的依据
 (allow system_server ctl_start_prop   (property_service (set)))   ✓
-(allow system_server audioserver      (process (signal)))         ← 只对 audioserver
-# atlasservice / mmlistservice：只有 binder/fd/fifo，**没有 process signal** ✗ ⇒ kill 走不通
+# atlasservice / mmlistservice：只有 binder/fd/fifo，没有 process signal ⇒ kill 走不通
 ```
 
-SMC App 里原有的注入（`Application#onCreate` / `MssService#onStartCommand`）保留：它保证
-`mss_music_only=0` 在用户打开分轨面板前已写入 audioserver。
+## 真机验证（root 手工复现，2026-09-27）
 
-## 已放弃：改白名单文件
+```
+内置文件：version 20260703，mss-whitelist 26 条
+追加后：  version 20991231，26 条原样保留 + 542 条新增（attribute=3），共 231718 字节
+写入 + ctl.restart mmlistservice 后：
+  service call SpecailizerPLService 42 s16 com.android.chrome i32 1  → 0 ✓（原先 ffffffff）
+  com.tencent.mm → 0 ✓；tv.danmaku.bili / com.netease.cloudmusic / com.heytap.music → 0 ✓（原成员不受影响）
+此时 audioserver 的 mss_music_only 保持机型默认，分轨听感正常。
+```
 
-曾尝试把 `/data/oplus/multimedia/Multimedia_Daemon_Online_List.xml`（`system:system 644`）改成「所有包
-attribute=3」。结论：**放弃**。证据：
+## 生效条件
 
-- 写它需要 uid=1000 + SELinux `write oplus_multimedia_file`，确实只有 system_server 满足；
-- 但它**不能可靠触发重读**：`IMMListService` transaction 1 **不是**重载入口（写文件 + `service call
-  MMListService 1` 无效 ✗），只有**重启 `mmlistservice`** 才重读（实测 ✓）；而 system_server 对
-  `mmlistservice` 没有 `process signal` 权限 ✗（只能用 `ctl.restart`）；
-- 更关键的是**有副作用**：把全部条目的 attribute 统一改成 3 之后，真机上「调人声/背景音」直接失效
-  （用户实测），说明该字段不只表示白名单准入，还参与分轨功能自身的行为。
-
-⇒ 白名单文件保持**原样不动**（`189573 bytes`、`<version>20260225</version>`、sha256 `285d8964…`）。
-
-## 生效条件与验证
-
-1. 安装模块，LSPosed 作用域勾选 **System Framework** +「AI 语音摘记」+「Atlas」+「声音分轨」。
-2. 重启设备（模块在 system_server 启动后自动完成上面两步）。
+1. LSPosed 作用域勾选：**System Framework** +「AI 语音摘记」（共 2 项）。
+2. 重启设备（或等下次开机）。新装 App 会在下次开机自动纳入名单。
 3. 验证：
 
 ```sh
 su -c "service call SpecailizerPLService 42 s16 com.android.chrome i32 1"   # 期望 0
-su -c "grep -a stem /data/adb/lspd/log/modules_*.log | tail -3"             # 期望「已下发…已重启」
-su -c "pidof atlasservice"                                                  # 每次开机应换成新 pid
+su -c "grep -a whitelist /data/adb/lspd/log/modules_*.log | tail -3"        # 期望「保留 N 条，追加 M 条」
+su -c "getprop init.svc_debug_pid.mmlistservice"                            # 每次开机应换成新 pid
 ```
 
 ## 局限
 
-- 需要 **System Framework** 作用域；模块在该进程内只跑一个后台线程 + 一次属性写，不做方法 hook。
-- 每次开机重启 atlasservice 一次（进程无状态，代价是一次 binder 重连）。
-- 白名单文件不再被触碰，因此不会影响分轨本身的行为。
+- 需要 **System Framework** 作用域；模块在该进程内只跑一个后台线程 + 一次文件写，不做方法 hook。
+- 每次开机重写白名单并重启一次 `mmlistservice`（进程无状态）。
+- 不触碰 `mss_music_only`，因此分轨的**分离通路**与出厂行为完全一致。
