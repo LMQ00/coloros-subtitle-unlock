@@ -20,12 +20,14 @@
 7. **配额 API 线索**：`com.oplus.aiunit.speech.asr` 的 `doConsumeCount(duid)` / `getRemainCount(duid)`
    是**文件转写**的配额接口；实时 ASR 的配额通过 ack 的 `monthlyAvailableDuration` 字段下发。两者不要混淆。
 
-## 待验证（真机）
+## 已定论（原「待验证」）
 
-8. **云端是否在 3000803 后继续下发识别结果**——决定本模块是否真正有效。
-   若云端直接断流，只能 hook 系统 App `com.oplus.aiunit`（超出当前范围，且用户明确不 hook 系统框架）。
-9. **hook 是否命中**：真机抓 `logcat -s ColorOSSubtitleUnlock`，应看到 `hooked ...` 与 `drop ...` 日志。
-   若某类找不到会打印 `hook xxx failed`，据此调整类名（版本差异）。
+8. **云端在 3000803 后仍继续下发识别结果** —— 已由真机验证：客户端 hook 后字幕不再中断，
+   用户实测可用（2026-09-25 起）。无需 hook 系统 App `com.oplus.aiunit`。
+   `[待确认]` 云端是否会在其它条件下断流（未做长期观察）。
+9. **hook 命中** —— 已确认：真机 logcat 可见 `hooked engine dispatcher s#onResultStatus`、
+   `hooked AsrGlobalParser h#e` 等启动日志与 `drop status code ...`。
+   注：LSPosed 的 modules 日志会轮转，历史证据无法回溯，只能现场复现。
 
 ## 声音分轨（`04-stem-separation.md` 配套）
 
