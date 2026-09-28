@@ -27,7 +27,14 @@ llvm-objdump -d /system_ext/lib64/libaudioflingerextimpl.so  > ~/tmp/af.asm
 特性 `oplus.software.audio.mss_music_only`，使 `OplusAtlasService` 初始化时**跳过**了
 `setParameters("mss_music_only=0")`。
 
-→ 解除方式：在 `com.oplus.atlas` 进程内让该特性判定返回 false，Atlas 自己就会把参数置 0。
+→ 解除方式（**当前方案，见 `05-stem-any-app.md`**）：**不碰 `mss_music_only`**，只扩白名单数据 ——
+保留既有条目的 `attribute`、把 `bit4` 置位的条目清零（17 → 3）、为缺失的包追加 `attribute=3`，
+再把 `<version>` 提到高于内置文件并让 `mmlistservice` 重读。
+
+> ⚠️ 曾实施过的「让 Atlas/SMC 把 `mss_music_only` 置 0」路线**已废弃**：它确实能让白名单外的 App
+> 通过准入，但会让音频策略不再为该 App 强制 MSS 通路（`AudioPolicyManagerExtImpl::shouldNotForceMss`
+> 要求 `[this+0xfc]==1`），现象是**面板可用、拖滑块无听感变化**。实测证据见 `05-stem-any-app.md`；
+> 本节以下「Hook 设计」「生效条件」段落为历史记录。
 
 ## 现象
 
@@ -66,7 +73,10 @@ MssService.onStartCommand(scene_package, caller_package)
 
 - 服务名 `SpecailizerPLService`（`ServiceManager.getService`）
 - 实现 `/system_ext/lib64/libSpecailizerPLService.so`（`android::SpecailizerPLService`），
-  **运行在 audioserver 进程内**（由 `libaudioflingerextimpl.so`、`libaudiopolicyextimpl.so` 加载）
+  **运行在原生进程 `/system_ext/bin/atlasservice` 内**（init 服务，ppid=1）。
+  实测依据（2026-09-28）：daemon 日志 `HoloAudio::SpecailizerPLService_Aidl(2705)` 的 pid 2705
+  即 `ps -A | grep atlasservice` 的 atlasservice（audioserver 是另一个 pid）。
+  audioserver 侧只提供被跨进程 `callClient` 查询的 `SpatilaizerNativeClient`，见下文「真正的机制」。
 - AIDL stub 在 `/system/framework/oplus-services.jar`；AIDL C++ 运行时 `spservice-aidl-cpp.so`
 - 分轨模型 `/odm/etc/oplusmss/double.tflite`（4.9MB）；DSP 侧 `/odm/lib/rfsa/adsp/oplusmss/`
 - 设备开关属性 `ro.oplus.audio.support.mss`（bit0 = 支持 MSS）
@@ -216,72 +226,42 @@ return true;
    与 `isMssMusicOnly` 侧读取处（`sp+0xe8` 基址 + `0x188` = 偏移 `0xa0`）一致。
    ⇒ `isMssMusicOnly()` = `CallbackData.enable & 1` = `mss_music_only` 参数值。
 
-## Hook 设计
+## Hook 设计（**历史记录，已废弃**）
+
+> 本节描述 v1.5–v1.8 实施、后经实测证伪并已从模块删除的路线，仅作追溯。**当前实现见 `05-stem-any-app.md`。**
 
 | 项 | 值 |
 |---|---|
 | 类 | `com.oplus.content.OplusFeatureConfigManager`（`/system/framework/oplus-framework.jar`，boot classpath） |
 | 方法 | `public boolean hasFeature(String name)` |
 | 进程 | `com.oplus.atlas` |
-| 行为 | `name.equals("oplus.software.audio.mss_music_only")` → 返回 `false` |
+| 行为 | `name.equals("oplus.software.audio.mss_music_only")` → 返回 `false`（让 Atlas 自行下发 `mss_music_only=0`） |
 
-**兜底（同一进程）**：
+兜底（同进程）：hook `android.media.AudioManager#setParameters(String)`，串中不含 `mss_music_only` 时追加。
+第三条路径：在 `com.oplus.smartmediacontroller` 进程的 `Application#onCreate` / `MssService#onStartCommand`
+直接调 `AudioManager.setParameters("mss_music_only=0")`。
 
-| 项 | 值 |
-|---|---|
-| 类 | `android.media.AudioManager`（boot classpath） |
-| 方法 | `setParameters(String)` |
-| 行为 | 若串中不含 `mss_music_only`，则追加 `;mss_music_only=0` |
+**废弃原因**：见本节开头 ⚠️ 与 `05-stem-any-app.md`「核心教训」。v1.9 起上述 hook 与
+`com.oplus.atlas` / `com.oplus.smartmediacontroller` 两个作用域均已从模块删除。
 
-兜底理由：主路径依赖 `OplusAtlasService.onCreate()` 那一处判断；该分支没走到、或 audioserver
-重启把参数重置回构造函数默认值 1 时，兜底会在下一次参数下发（Atlas 内共 58 处）重新置 0。
-只作用于 Atlas 进程，日志用 `append mss_music_only=0 -> "..."` 与主路径区分。
-
-**第三条路径：目标 App 自己下发（不需要重启 Atlas）**
-
-| 项 | 值 |
-|---|---|
-| 进程 | `com.oplus.smartmediacontroller`（声音分轨 App 自身） |
-| 依据 | 其 manifest 声明 `android.permission.MODIFY_AUDIO_SETTINGS` |
-| 方法 | `android.app.Application#onCreate`（进程建立即注入）＋ `MssService#onStartCommand`（每次面板打开再注入一次） |
-| 行为 | 调 `AudioManager.setParameters("mss_music_only=0")` |
-
-为什么需要它：LSPosed 的 hook 只随**目标进程启动**注入。`OplusAtlasService` 由系统在开机时拉起，
-若模块是开机之后才装的，Atlas 进程不重建就永远没有 hook——实测本机开机 48.3 小时、
-模块中途安装，因此 Atlas 路径全部无效。而 `MssService.onStartCommand` 每次打开分轨面板都会走，
-且**早于** App 调 `setMssEnable`，所以参数在 native 判定前已置 0；只需让这个 App 的进程重建一次
-（强停或重启该 App）。日志：`inject(Application#onCreate): setParameters(mss_music_only=0)`。
-
-效果：`OplusAtlasService` 的 `setParameters("mss_music_only=0")` 分支被满足
-→ audioserver 参数置 0 → `isMssMusicOnly()` 为 false
-→ `tv.danmaku.bili`（attr 17）通过 `isVocalAdjustSupported` → `setMssEnable` 成功 → 分轨启用。
-
-只拦这一个特性名，不影响 `hasFeature` 的其他调用（Atlas 内还用它判断
-`oplus.software.audio.hearing_health_support`、`oplus.software.game.cold.start.speedup.enable` 等）。
-
-### 为什么不走别的路
+### 为什么不走别的路（当时判断；仅第 1 条仍成立）
 
 | 路线 | 判定 |
 |---|---|
-| 只 hook 客户端 App（SmartMediaController） | **无效**：native 服务 `*ret = -1` 且不调 `setMssEnableInt`，分轨不会真正启用 |
-| 改 `mss-whitelist`（改 `/data/oplus` 或 Magisk overlay） | 可行，但需 root、只覆盖清单内包名、可能被在线更新覆盖；本项目不做 |
-| hook/patch native（audioserver 内 `isVocalAdjustSupported` / `setMssEnable`） | 可做到字面「任意 App」，但属 hook 系统框架；本项目不做 |
+| 只 hook 客户端 App（SmartMediaController） | **无效**（仍成立）：native 侧 `*ret = -1` 且不调 `setMssEnableInt` |
+| 改 `mss-whitelist` | ~~需 root、只覆盖清单内包名~~ → **这就是当前方案**，见 `05-stem-any-app.md`（system_server 内可写，无需 root 常驻） |
+| hook/patch native | 未采用，且不需要（扩白名单数据即可覆盖任意 App） |
 
-### 范围限制
+### 范围限制（已不成立）
 
-本方案只解决**已在白名单内、属性含 `bit4`** 的 App（bilibili、B站HD、优酷、学习通、
-百度网盘、网易慕课、thinkwu.live）。**不在白名单的 App**（YouTube、Chrome、本地播放器…）
-仍会被 `getListValueByName` 判为不支持——那需要改白名单数据或 hook native，超出本期范围。
+曾写「只解决已在白名单内、属性含 `bit4` 的 App，名单外的 YouTube/Chrome 仍被拒」。
+v1.10 起为「已安装但不在名单内」的包**追加**条目，任意 App 均可分轨 —— 见 `05-stem-any-app.md`。
 
-## 生效条件与验证
+## 生效条件与验证（已迁移）
 
-0. 安装 `artifacts/coloros-subtitle-unlock-v1.5.apk`；只有从 v1.2（旧签名）升级才需先
-   `/system/bin/pm uninstall com.lmq.coloros.subtitle`，v1.3/v1.4 → v1.5 可直接覆盖。
-1. LSPosed 启用模块，作用域勾选「AI 语音摘记」+「Atlas」(`com.oplus.atlas`)。
-2. 重启设备，或强停 `com.oplus.atlas` 让其重建（`setParameters` 在 Atlas 初始化时执行一次）。
-3. bilibili 播放音频 → 打开「声音分轨」→ 不再弹「当前应用暂不支持声音分轨」，
-   人声/伴奏增益滑杆可调且声音有实际分离效果。
-4. `logcat -s ColorOSSubtitleUnlock` 可见 hook 命中日志。
+安装、作用域、重启与验证步骤统一见 `05-stem-any-app.md`（当前 v1.10，作用域仅
+`com.coloros.accessibilityassistant` + `android` 两项）。历史版本 v1.5 的步骤（Atlas 作用域 +
+强停 Atlas）已失效，不再保留。
 
 ## 参数写入者普查（静态）
 
@@ -316,10 +296,10 @@ return true;
 
 ## 已知限制
 
-- **参数不持久**：`mss_music_only` 只是 audioserver 内 `AudioFlingerExtImpl` 对象的成员
-  （构造函数默认 1）。若 audioserver 单独重启而 Atlas 不重启，参数会回到 1（仅音乐），
-  需要重启 Atlas（或设备）重新下发。设备重启时 audioserver 先起、Atlas 后起 → 正常。
-- **仅白名单内**：见上文「范围限制」。
+- ~~参数不持久~~：仅在走 `mss_music_only` 路线时成立。**当前方案不使用该参数**，不受影响。
+- ~~仅白名单内~~：v1.10 起已扩名单覆盖全部已安装应用，见 `05-stem-any-app.md`。
+- **需要 System Framework 作用域**：写白名单文件与 `ctl.restart mmlistservice` 要求 uid=1000 +
+  对应 SELinux 权限，只有 system_server 同时满足（依据见 `05-stem-any-app.md`）。
 
 ## 为什么 `mss_music_only` 路线在本 ROM 上无效（实测结论）
 
