@@ -105,14 +105,18 @@ git commit --author="pi <pi@local>" --no-gpg-sign -m "<类型>: <文案>"
 
 ## 文档索引
 
-| 路径 | 何时读 |
-|---|---|
-| `docs/README.md` | 接手项目、需要总览两个功能与当前状态时 |
-| `docs/01-reverse-notes.md` | 改字幕相关 hook、怀疑云端断流、核对状态码/类名时 |
-| `docs/02-module-design.md` | 改字幕 hook 点、增删作用域时 |
-| `docs/03-pitfalls.md` | 开始新一轮逆向/反编译前；遇到「hook 不生效」类问题时 |
-| `docs/04-stem-separation.md` | 改分轨 hook、核对 native 判定链、解释「仅音乐」限制时 |
-| `docs/archive/` | **历史快照，已冻结**：不维护、不删除；只在追溯旧结论时读 |
+| 文档 | 类型 | 何时读 |
+|---|---|---|
+| `docs/交接文档.md` | 入口 | 接手项目第一步：从这里路由到具体文档 |
+| `docs/README.md` | 索引 | 需要 docs/ 与产物（APK、仓库）清单时 |
+| `docs/testing.md` | testing | 跑验证、判断「算不算完成」、装机与作用域、回滚时 |
+| `docs/01-reverse-notes.md` | references | 改字幕相关 hook、怀疑云端断流、核对状态码/类名时 |
+| `docs/02-module-design.md` | architecture | 改字幕 hook 点、增删作用域时 |
+| `docs/03-pitfalls.md` | runbook | 开始新一轮逆向/反编译前；遇到「hook 不生效」类问题时 |
+| `docs/04-stem-separation.md` | references | 改分轨 hook、核对 native 判定链、解释「仅音乐」限制时 |
+| `docs/05-stem-any-app.md` | decisions | 分轨「任意 App」方案、为什么不能动 `mss_music_only`、写白名单的权限依据时 |
+| `docs/archive/` | references | **历史快照，已冻结**：不维护、不删除；只在追溯旧结论时读 |
+| `AGENTS.md`（本文件） | conventions | 工程硬性约束、提交规范、文档同步要求 |
 
 > 唯一文档源是 `docs/`。`docs/archive/` 不再更新。
 
