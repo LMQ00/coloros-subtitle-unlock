@@ -1,9 +1,21 @@
 package com.lmq.coloros.subtitle;
 
 import android.content.Context;
-import android.content.Intent;
-import android.media.AudioManager;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
 import android.util.Log;
+
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 
 import de.robv.android.xposed.IXposedHookLoadPackage;
@@ -24,38 +36,36 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage;
  *    本模块在三个层面丢弃这些限制状态码，并把 UI 的「本月剩余时长」改写为极大值。
  *    注意：配额由云端/系统 AIUnit 判定，本模块只解除客户端对限制的反应。
  *
- * 2) 「声音分轨」(com.oplus.smartmediacontroller) 仅限音乐类 App 使用。
+ * 2) 「声音分轨」(com.oplus.smartmediacontroller) 仅限名单内 App 使用。
  *    逆向结论（APK 16.1.20 + 系统库反汇编）：
- *      判定在 native 服务 android::SpecailizerPLService（跑在 audioserver 内）：
- *      setMssEnable(pkg,true) 先调 isVocalAdjustSupported(pkg)，该函数查 XML 白名单
- *      "mss-whitelist" 的 attribute 值 v：bit0 必须为 1（支持人声调节）；
- *      若 v 的 bit4 置位（非音乐类，如 bilibili 的 17），还要看 isMssMusicOnly()，
- *      为真则拒绝并令 *ret = -1 —— App 收到非 0 便弹「当前应用暂不支持声音分轨」。
- *      isMssMusicOnly() 取自音频参数 mss_music_only；该参数是否被置 0 取决于
- *      OplusAtlasService 初始化时的
- *        if (!OplusFeatureConfigManager.getInstance().hasFeature("oplus.software.audio.mss_music_only"))
- *            audioManager.setParameters("mss_music_only=0");
- *      本机声明了该特性，故参数保持 1（仅音乐）。
- *    本模块在 com.oplus.atlas 进程内让该特性判定返回 false，使 Atlas 自行下发
- *    mss_music_only=0，从而放行白名单内带「非音乐类」位的 App（如 bilibili）。
- *    注意：不在 mss-whitelist 内的 App 仍然不支持。
+ *      判定在 native 服务 android::SpecailizerPLService（跑在 atlasservice 进程）：
+ *      setMssEnable(pkg,true) 先调 isVocalAdjustSupported(pkg)，该函数查白名单
+ *      "mss-whitelist"：不在名单内直接拒绝；名单内 attribute 的 bit4 置位（如 bilibili 的 17）
+ *      时还要看 isMssMusicOnly()，为真则拒绝 —— App 收到非 0 便弹「当前应用暂不支持声音分轨」。
+ *
+ *      **不要动 mss_music_only 参数**：把它压成 0 虽能让名单外 App 也开面板，但音频策略
+ *      （AudioPolicyManagerExtImpl::shouldNotForceMss / shouldForceMssBySession）会因此不再为
+ *      该 App 强制 MSS 通路，表现为「面板可用、拖滑块无听感变化」。
+ *      本模块改为**只扩名单**：以内置白名单为底原样保留全部条目，仅追加缺失的包（attribute=3），
+ *      写在线白名单并让 mmlistservice 重读。详见 startWhitelistUnlock()。
  */
 public class MainHook implements IXposedHookLoadPackage {
 
     private static final String TAG = "ColorOSSubtitleUnlock";
     private static final String TARGET_PKG = "com.coloros.accessibilityassistant";
-    private static final String TARGET_PKG_ATLAS = "com.oplus.atlas";
-    private static final String TARGET_PKG_SMC = "com.oplus.smartmediacontroller";
-    /** System Framework（system_server）：能写 audioserver 参数、也能让 init 重启原生服务。 */
+    /** System Framework（system_server）：只有它能写白名单文件、并让 init 重启 mmlistservice。 */
     private static final String TARGET_PKG_SYSTEM = "android";
 
-    /** audioserver 侧参数名：1 = 分轨仅限音乐应用，0 = 不限制。 */
-    private static final String PARAM_MSS_MUSIC_ONLY = "mss_music_only";
-    /** 缓存 {@code isMssMusicOnly()} 的原生进程；改参数后必须重启它才能重新取值。 */
-    private static final String SERVICE_ATLASSERVICE = "atlasservice";
-
-    /** 设备特性：声明后 OplusAtlasService 不再下发 mss_music_only=0（即「分轨仅音乐」）。 */
-    private static final String FEATURE_MSS_MUSIC_ONLY = "oplus.software.audio.mss_music_only";
+    /** 内置分轨白名单（只读，version 最高时为生效源）。 */
+    private static final String BUILTIN_LIST_PATH = "/system_ext/etc/Multimedia_Daemon_List.xml";
+    /** 可写的「在线更新」白名单；version 高于内置时生效。 */
+    private static final String ONLINE_LIST_PATH = "/data/oplus/multimedia/Multimedia_Daemon_Online_List.xml";
+    /** 写入的 version，必须高于内置文件的 version。 */
+    private static final String LIST_VERSION = "20991231";
+    /** 追加条目的 attribute：bit0 置位（支持人声调节）、bit4 清零（不受「仅音乐」判定限制）。 */
+    private static final String LIST_ATTRIBUTE = "3";
+    /** 解析白名单条目的原生进程，写文件后需重启它才会重读。 */
+    private static final String SERVICE_MMLISTSERVICE = "mmlistservice";
 
     // t3.a / e4.c 状态码
     private static final int CODE_USE_TIME_TOO_LONG = -2017;
@@ -71,20 +81,9 @@ public class MainHook implements IXposedHookLoadPackage {
 
     @Override
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lp) {
-        if (TARGET_PKG_ATLAS.equals(lp.packageName)) {
-            log("module loading in " + lp.packageName + " (pid=" + android.os.Process.myPid() + ")");
-            hookMssMusicOnlyFeature(lp.classLoader);
-            hookAtlasSetParameters(lp.classLoader);
-            return;
-        }
         if (TARGET_PKG_SYSTEM.equals(lp.packageName)) {
             log("module loading in system_server (System Framework)");
-            startStemUnlock(lp.classLoader);
-            return;
-        }
-        if (TARGET_PKG_SMC.equals(lp.packageName)) {
-            log("module loading in " + lp.packageName + " (pid=" + android.os.Process.myPid() + ")");
-            hookSmcInjectParam(lp.classLoader);
+            startWhitelistUnlock(lp.classLoader);
             return;
         }
         if (!TARGET_PKG.equals(lp.packageName)) {
@@ -99,173 +98,50 @@ public class MainHook implements IXposedHookLoadPackage {
         hookStopGuards(lp.classLoader);
     }
 
-    /**
-     * 「声音分轨」：让 com.oplus.atlas 认为设备未声明「分轨仅音乐」特性，
-     * 从而 OplusAtlasService 自行下发 setParameters("mss_music_only=0")。
-     */
-    private static void hookMssMusicOnlyFeature(ClassLoader cl) {
-        try {
-            XposedHelpers.findAndHookMethod(
-                    "com.oplus.content.OplusFeatureConfigManager", cl, "hasFeature",
-                    String.class,
-                    new XC_MethodHook() {
-                        @Override
-                        protected void beforeHookedMethod(MethodHookParam param) {
-                            String name = (String) param.args[0];
-                            if (FEATURE_MSS_MUSIC_ONLY.equals(name)) {
-                                log("force hasFeature(" + name + ") = false");
-                                param.setResult(Boolean.FALSE);
-                            }
-                        }
-                    });
-            log("hooked OplusFeatureConfigManager#hasFeature");
-        } catch (Throwable t) {
-            log("hookMssMusicOnlyFeature failed: " + t);
-        }
-    }
+    // ================= 分轨「任意 App」：追加式白名单（system_server） =================
 
     /**
-     * 兜底：Atlas 进程内任何 {@code AudioManager.setParameters} 都补上 {@code mss_music_only=0}。
-     *
-     * 主路径依赖 {@code OplusAtlasService.onCreate()} 里那一处判断；若该分支因任何原因没走到
-     * （或 audioserver 重启把参数重置回构造函数默认的 1），本兜底会在下一次参数下发时重新置 0。
-     * 只在 Atlas 进程内生效，不改动其他 App。
-     */
-    private static void hookAtlasSetParameters(ClassLoader cl) {
-        try {
-            XposedHelpers.findAndHookMethod(
-                    "android.media.AudioManager", cl, "setParameters",
-                    String.class,
-                    new XC_MethodHook() {
-                        private int appended = 0;
-
-                        @Override
-                        protected void beforeHookedMethod(MethodHookParam param) {
-                            String s = (String) param.args[0];
-                            if (s == null || s.contains("mss_music_only")) {
-                                return;
-                            }
-                            param.args[0] = s + ";mss_music_only=0";
-                            if (appended < 20) {
-                                appended++;
-                                log("append mss_music_only=0 -> \"" + s + "\"");
-                            }
-                        }
-                    });
-            log("hooked AudioManager#setParameters (fallback)");
-        } catch (Throwable t) {
-            log("hookAtlasSetParameters failed: " + t);
-        }
-    }
-
-    /**
-     * 第三条注入路径：在目标 App（`com.oplus.smartmediacontroller`）自己的进程里下发参数。
-     *
-     * 该 App 的 manifest 声明了 `android.permission.MODIFY_AUDIO_SETTINGS`，所以它自己就能
-     * 调用 `AudioManager.setParameters`。注入点选 `MssService.onStartCommand`——面板每次被拉起
-     * 都会走这里，且**早于** App 调 `setMssEnable`，因此参数在 native 判定前已置 0。
-     *
-     * 好处：不必重启 Atlas 进程（也就不用重启整机），只要这个 App 的进程重建一次即可。
-     */
-    private static void hookSmcInjectParam(ClassLoader cl) {
-        // 最早的注入时机：App 进程一建立就下发，保证早于第一次 setMssEnable
-        try {
-            XposedHelpers.findAndHookMethod(
-                    "android.app.Application", cl, "onCreate",
-                    new XC_MethodHook() {
-                        @Override
-                        protected void afterHookedMethod(MethodHookParam param) {
-                            injectMssMusicOnly(param.thisObject, "Application#onCreate");
-                        }
-                    });
-            log("hooked Application#onCreate (early inject)");
-        } catch (Throwable t) {
-            log("hook Application#onCreate failed: " + t);
-        }
-        try {
-            XposedHelpers.findAndHookMethod(
-                    "com.oplus.smartmediacontroller.MssService", cl, "onStartCommand",
-                    Intent.class, int.class, int.class,
-                    new XC_MethodHook() {
-                        private int injected = 0;
-
-                        @Override
-                        protected void beforeHookedMethod(MethodHookParam param) {
-                            if (injected++ < 5) {
-                                injectMssMusicOnly(param.thisObject, "MssService#onStartCommand");
-                            }
-                        }
-                    });
-            log("hooked MssService#onStartCommand");
-        } catch (Throwable t) {
-            log("hookSmcInjectParam failed: " + t);
-        }
-    }
-
-    /**
-     * 在指定进程内下发 {@code mss_music_only=0}（调用者须持 MODIFY_AUDIO_SETTINGS：
-     * SMC App 与 system_server 都有）。
-     *
-     * @return 是否调用成功（不代表 audioserver 已生效，生效还要求 atlasservice 重启清缓存）
-     */
-    private static boolean injectMssMusicOnly(Object contextOwner, String where) {
-        try {
-            Context ctx = (Context) contextOwner;
-            AudioManager am = (AudioManager) ctx.getSystemService(Context.AUDIO_SERVICE);
-            if (am == null) {
-                log("inject(" + where + "): AudioManager unavailable");
-                return false;
-            }
-            am.setParameters(PARAM_MSS_MUSIC_ONLY + "=0");
-            log("inject(" + where + "): setParameters(" + PARAM_MSS_MUSIC_ONLY + "=0)");
-            return true;
-        } catch (Throwable t) {
-            log("inject(" + where + ") failed: " + t);
-            return false;
-        }
-    }
-
-    // ================= 声音分轨：解除「仅音乐」限制（system_server） =================
-
-    /**
-     * 判定链全在 native、不经过 Java：
+     * 判定链全在 native，不经过 Java：
      *
      * <pre>
      * SpecailizerPLService#setMssEnable(pkg,1)
-     *   → isVocalAdjustSupported(pkg)   libSpecailizerPLService.so，跑在 atlasservice 进程
-     *       → 查 mss-whitelist：attribute bit4 置位的包再问
-     *       → isMssMusicOnly()          ← 取 audioserver 的 mss_music_only 参数（机型默认 1）
-     *                                   ← **在 atlasservice 进程内缓存**，只有进程重启才重新取值
+     *   → isVocalAdjustSupported(pkg)   libSpecailizerPLService.so @0x1b0b4，跑在 atlasservice
+     *       → 查 mss-whitelist（数据由 mmlistservice 提供）：不在名单内 ⇒ 拒绝
+     *       → 名单内 attribute bit4 置位的包，再问 isMssMusicOnly()
+     *           ← 取值自 audioserver 的 mss_music_only 参数（机型默认 1）
+     *           ← **同一参数还决定音频策略是否为该 App 强制 MSS 通路**
+     *             （AudioPolicyManagerExtImpl::shouldNotForceMss / shouldForceMssBySession）
      * </pre>
      *
-     * 所以「任意 App 可分轨」只需把 {@code mss_music_only} 置 0、并让 atlasservice 重新取值：
+     * 关键教训：把 {@code mss_music_only} 压成 0，虽然能让「名单外的 App」也打开面板，
+     * 但同时让策略层不再强制 MSS 通路 —— 现象是**面板可用、拖滑块毫无听感变化**
+     * （audioserver 日志：{@code chooseWhichTrackToProcess_l ... tracks[0|0] voc_adj_on[0]}）。
+     * 故本模块**绝不触碰该参数**，只做「把 App 加进名单」这一件事。
      *
+     * 做法（仅 system_server 内）：
      * <ol>
-     *   <li>system_server（uid 1000，持 MODIFY_AUDIO_SETTINGS）调
-     *       {@code AudioManager.setParameters("mss_music_only=0")} ⇒ 写进 audioserver；</li>
-     *   <li>{@code SystemProperties.set("ctl.restart","atlasservice")} 让 init 重启它 ⇒ 缓存失效，
-     *       之后首次查询读到 0 ⇒ 放行任意 App。</li>
+     *   <li>以**内置**白名单 {@code /system_ext/etc/Multimedia_Daemon_List.xml} 为底（version 最高、
+     *       内容最新），原样保留其全部条目（**绝不改写既有 attribute**）；</li>
+     *   <li>只为「已安装但不在名单内」的包**追加** {@code attribute=3}（bit0 支持人声调节、bit4 清零）；</li>
+     *   <li>把 {@code <version>} 提到 {@code 20991231}（必须高于内置文件），写入可写的在线白名单
+     *       {@code /data/oplus/multimedia/Multimedia_Daemon_Online_List.xml}（就地截断写：SELinux
+     *       只允许 write、不允许 rename）；</li>
+     *   <li>{@code SystemProperties.set("ctl.restart","mmlistservice")} 让解析白名单的原生进程重读
+     *       （策略依据：{@code allow system_server ctl_restart_prop (property_service (set))}；
+     *        而 {@code process signal} 对 mmlistservice 不允许 ⇒ kill 走不通）。</li>
      * </ol>
-     *
-     * 第 2 步的依据（设备策略实测）：{@code (allow system_server ctl_restart_prop (property_service (set)))} ✓；
-     * 而 {@code process signal} 对 atlasservice/mmlistservice **不允许** ✗（kill 走不通，只能走 init）。
      */
-    private static void startStemUnlock(final ClassLoader cl) {
+    private static void startWhitelistUnlock(final ClassLoader cl) {
         Thread t = new Thread(new Runnable() {
             @Override
             public void run() {
-                // audioserver / AudioService 就绪要时间，失败重试（最多 5 分钟）
                 for (int i = 0; i < 60; i++) {
                     try {
-                        Context ctx = systemContext(cl);
-                        if (ctx != null && injectMssMusicOnly(ctx, "system_server")) {
-                            restartInitService(SERVICE_ATLASSERVICE);
-                            log("stem: mss_music_only=0 已下发，"
-                                    + SERVICE_ATLASSERVICE + " 已重启（缓存失效 ⇒ 任意 App 放行）");
+                        if (extendWhitelist(cl)) {
                             return;
                         }
                     } catch (Throwable th) {
-                        log("stem attempt " + i + " failed: " + th);
+                        log("whitelist attempt " + i + " failed: " + th);
                     }
                     try {
                         Thread.sleep(5_000L);
@@ -273,11 +149,76 @@ public class MainHook implements IXposedHookLoadPackage {
                         return;
                     }
                 }
-                log("stem: gave up");
+                log("whitelist: gave up");
             }
-        }, "mss-stem-unlock");
+        }, "mss-whitelist-unlock");
         t.setDaemon(true);
         t.start();
+    }
+
+    /** @return 是否已完成（成功或无需处理） */
+    private static boolean extendWhitelist(ClassLoader cl) throws Throwable {
+        File builtin = new File(BUILTIN_LIST_PATH);
+        if (!builtin.exists()) {
+            log("whitelist: 内置文件不存在，跳过");
+            return true;
+        }
+        String base = readAll(builtin);
+        int i = base.indexOf("<mss-whitelist>");
+        int j = base.indexOf("</mss-whitelist>");
+        if (i < 0 || j < i) {
+            log("whitelist: 内置文件缺少 <mss-whitelist> 段，跳过");
+            return true;
+        }
+        List<String> pkgs = installedPackages(cl);
+        if (pkgs.isEmpty()) {
+            return false;
+        }
+        String block = base.substring(i + "<mss-whitelist>".length(), j);
+        Set<String> have = new HashSet<String>();
+        Matcher m = Pattern.compile("<name>\\s*([^<]+?)\\s*</name>").matcher(block);
+        while (m.find()) {
+            have.add(m.group(1).trim());
+        }
+        StringBuilder sb = new StringBuilder("<mss-whitelist>").append(block);
+        int added = 0;
+        for (String p : pkgs) {
+            if (have.contains(p)) {
+                continue;
+            }
+            sb.append("\n        <name>").append(p).append("</name>")
+              .append("\n        <attribute>").append(LIST_ATTRIBUTE).append("</attribute>");
+            added++;
+        }
+        sb.append("\n    ");
+        String out = base.substring(0, i) + sb + base.substring(j);
+        out = out.replaceFirst("<version>\\s*\\d+\\s*</version>", "<version>" + LIST_VERSION + "</version>");
+        writeAll(new File(ONLINE_LIST_PATH), out);
+        log("whitelist: 保留 " + have.size() + " 条原有条目，追加 " + added + " 条（attribute="
+                + LIST_ATTRIBUTE + ", version=" + LIST_VERSION + "）");
+        restartInitService(SERVICE_MMLISTSERVICE);
+        return true;
+    }
+
+    private static List<String> installedPackages(ClassLoader cl) {
+        try {
+            Context ctx = systemContext(cl);
+            if (ctx == null) {
+                return Collections.emptyList();
+            }
+            PackageManager pm = ctx.getPackageManager();
+            List<String> out = new ArrayList<String>();
+            for (PackageInfo pi : pm.getInstalledPackages(0)) {
+                if (pi != null && pi.packageName != null) {
+                    out.add(pi.packageName);
+                }
+            }
+            Collections.sort(out);
+            return out;
+        } catch (Throwable t) {
+            log("whitelist: 枚举应用失败: " + t);
+            return Collections.emptyList();
+        }
     }
 
     /** system_server 的 Context（{@code ActivityThread.currentActivityThread().getSystemContext()}）。 */
@@ -296,6 +237,32 @@ public class MainHook implements IXposedHookLoadPackage {
             log("restart: ctl.restart " + name);
         } catch (Throwable t) {
             log("restart(" + name + ") failed: " + t);
+        }
+    }
+
+    private static String readAll(File f) throws Throwable {
+        FileInputStream in = new FileInputStream(f);
+        try {
+            ByteArrayOutputStream bos = new ByteArrayOutputStream((int) f.length());
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) > 0) {
+                bos.write(buf, 0, n);
+            }
+            return new String(bos.toByteArray(), "UTF-8");
+        } finally {
+            in.close();
+        }
+    }
+
+    /** 就地截断写入（SELinux 只允许 write，不允许 rename，故不用临时文件+改名）。 */
+    private static void writeAll(File f, String content) throws Throwable {
+        FileOutputStream out = new FileOutputStream(f, false);
+        try {
+            out.write(content.getBytes("UTF-8"));
+            out.flush();
+        } finally {
+            out.close();
         }
     }
 
