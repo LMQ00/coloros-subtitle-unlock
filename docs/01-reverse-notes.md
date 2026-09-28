@@ -148,9 +148,11 @@ com.coloros.accessibilityassistant（单进程）
 
 ## 未决问题
 
-- 云端返回 3000803 后是否**继续下发识别结果**？若停止，客户端 hook 无效（需 hook 系统 AIUnit）。
+- ~~云端返回 3000803 后是否继续下发识别结果~~ → **已定论**：继续下发，客户端 hook 有效，
+  真机实测字幕不再中断（见 `03-pitfalls.md` §已定论 8）。
 - 配额绑定维度：设备 `duid` / 账号 / 调用方包名？（文件转写有 `doConsumeCount(duid)`/`getRemainCount(duid)` API）
-- 是否存在按「场景 sceneType」区分的不同配额（字幕=3，通话摘要=4）。
+  `[待确认]` 未验证。
+- 是否存在按「场景 sceneType」区分的不同配额（字幕=3，通话摘要=4）。`[待确认]` 未验证。
 
 ## 候选下一步（若客户端 hook 无效时）
 
