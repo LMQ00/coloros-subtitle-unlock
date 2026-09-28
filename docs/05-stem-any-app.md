@@ -62,40 +62,11 @@ AudioPolicyManagerExtImpl::oplusForceOutputForMss()
 # atlasservice / mmlistservice：只有 binder/fd/fifo，没有 process signal ⇒ kill 走不通
 ```
 
-## 真机验证（root 手工复现，2026-09-27）
+## 验证
 
-```
-内置文件：version 20260703，mss-whitelist 26 条
-追加后：  version 20991231，26 条原有条目保留（其中 7 条 bit4 清零：17→3）+ 542 条新增（attribute=3），568 条
-写入 + ctl.restart mmlistservice 后：
-  service call SpecailizerPLService 42 s16 com.android.chrome i32 1  → 0 ✓（原先 ffffffff）
-  com.tencent.mm → 0 ✓；tv.danmaku.bili / com.netease.cloudmusic / com.heytap.music → 0 ✓（原成员不受影响）
-此时 audioserver 的 mss_music_only 保持机型默认，分轨听感正常。
-```
-
-## 真机验证（开机自动路径，2026-09-28）
-
-```
-模块日志  whitelist: 保留 26 条原有条目（7 条 bit4 清零），追加 542 条（attribute=3, version=20991231）
-          restart: ctl.restart mmlistservice
-白名单    231718 bytes / <version>20991231</version>（由模块于开机后写入）
-探针      bilibili / 微信 / chrome / 网易云 / 酷狗 / 优酷 全部 00000000
-bili 判定 isVocalAdjustSupported: supportType=3 → setMssEnableInt --- tv.danmaku.bili[1]
-参数      mss_music_only 本次开机后无任何写入（分离通路保持出厂行为）
-用户实测  bilibili 分轨面板可用、拖人声/背景有听感变化
-```
-
-## 生效条件
-
-1. LSPosed 作用域勾选：**System Framework** +「AI 语音摘记」（共 2 项）。
-2. 重启设备（或等下次开机）。新装 App 会在下次开机自动纳入名单。
-3. 验证：
-
-```sh
-su -c "service call SpecailizerPLService 42 s16 com.android.chrome i32 1"   # 期望 0
-su -c "grep -a whitelist /data/adb/lspd/log/modules_*.log | tail -3"        # 期望「保留 N 条，追加 M 条」
-su -c "getprop init.svc_debug_pid.mmlistservice"                            # 每次开机应换成新 pid
-```
+验证步骤与实测结果（含开机自动路径）见 **`testing.md`**。本方案的关键判据：
+daemon logcat 必须出现 `isVocalAdjustSupported: supportType=3` **且**紧随
+`setMssEnableInt --- <pkg>[1]` —— 只有前者说明被 `isVocalAdjustSupported` 拒掉了。
 
 ## 局限
 
