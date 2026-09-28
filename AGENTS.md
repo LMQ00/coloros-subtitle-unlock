@@ -6,8 +6,8 @@
 
 | 功能 | 目标 App | 限制 | 状态 |
 |---|---|---|---|
-| 字幕每月 120 分钟 | `com.coloros.accessibilityassistant`（AI 语音摘记） | 云端状态码 `3000803` → 客户端停字幕 | 模块已实现，**真机已验证可用** |
-| 声音分轨限名单 App | `com.oplus.smartmediacontroller`（声音分轨） | native `mss-whitelist`（`mmlistservice` 解析 XML） | 模块已实现（system_server 内**追加式扩名单** + `ctl.restart mmlistservice`）；真机探针实测任意包放行，待重启验证 |
+| 字幕每月 120 分钟 | `com.coloros.accessibilityassistant`（AI 语音摘记） | 云端状态码 `3000803` → 客户端停字幕 | 模块已实现，**真机已验证** |
+| 声音分轨限名单 App | `com.oplus.smartmediacontroller`（声音分轨） | native `mss-whitelist`（`mmlistservice` 解析 XML） | 模块已实现（system_server 内**追加式扩名单** + bit4 清零 + `ctl.restart mmlistservice`），**真机已验证**（bilibili/微信/优酷等均放行且分轨可用） |
 
 - 被逆向的目标 APK 在**上一层目录**：`../AI 语音摘记_16.3.12.apk`、`../声音分轨_16.1.20.apk`
 - 模块形态：LSPosed / Xposed（Java hook），作用域见 `docs/02-module-design.md`
