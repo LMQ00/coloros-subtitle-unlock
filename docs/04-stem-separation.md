@@ -1,4 +1,4 @@
-# 声音分轨：音乐应用限定解除（逆向 + hook 设计）
+# 声音分轨：音乐应用限定解除（逆向证据；当前方案见 `05-stem-any-app.md`）
 
 > 对象（在仓库上一层）：`../声音分轨_16.1.20.apk`
 > 包名：`com.oplus.smartmediacontroller`（versionCode 16001020 / minSdk 34 / targetSdk 35）
