@@ -22,7 +22,7 @@
 |---|---|---|---|
 | 字幕 120 分钟限制 | `com.coloros.accessibilityassistant` | 云端状态码 `3000803` → 客户端响应 | 模块已实现，待真机确认 |
 | 声音分轨音乐限定 | `com.oplus.smartmediacontroller` | native `mss-whitelist` + `mss_music_only` 参数 | 已验证（用户实测可用） |
-| 分轨「任意 App」 | 同上 | `mss-whitelist` 白名单 | 已实现并实测放行任意包（追加式，不动既有条目）；待真机重启验证 |
+| 分轨「任意 App」 | 同上 | `mss-whitelist` 白名单 | **已验证**：开机自动追加式扩名单（含 bit4 清零）+ 重启 mmlistservice，任意 App 放行且分轨可用 |
 
 ## 模块作用域
 
