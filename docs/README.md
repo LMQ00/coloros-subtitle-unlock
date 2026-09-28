@@ -18,21 +18,17 @@
 
 ## 两个功能与状态
 
-| 功能 | 目标 App | 判定点 | 状态 |
-|---|---|---|---|
-| 字幕 120 分钟限制 | `com.coloros.accessibilityassistant` | 云端状态码 `3000803` → 客户端响应 | 模块已实现，待真机确认 |
-| 声音分轨音乐限定 | `com.oplus.smartmediacontroller` | native `mss-whitelist` + `mss_music_only` 参数 | 已验证（用户实测可用） |
-| 分轨「任意 App」 | 同上 | `mss-whitelist` 白名单 | **已验证**：开机自动追加式扩名单（含 bit4 清零）+ 重启 mmlistservice，任意 App 放行且分轨可用 |
+**当前状态、验证步骤与回滚方式统一见 `testing.md`**（本页不复述，避免两处漂移）。
 
 ## 模块作用域
 
 `app/src/main/res/values/arrays.xml` 的 `xposed_scope`：
 
 - `com.coloros.accessibilityassistant` —— 字幕限制
-- `com.oplus.atlas` —— 分轨限制（`OplusAtlasService` 在此进程决定是否下发 `mss_music_only=0`）
-- `com.oplus.smartmediacontroller` —— 分轨 App 自身，持 `MODIFY_AUDIO_SETTINGS`，
-  在 `MssService` 启动时直接下发参数（不依赖 Atlas 进程重建）
 - `android`（System Framework）—— 在 system_server 内追加式扩展分轨白名单并让 init 重启 `mmlistservice`
+
+> v1.9 起删除了 `com.oplus.atlas` 与 `com.oplus.smartmediacontroller` 两项作用域：
+> 它们注入 `mss_music_only=0`，会破坏分轨分离通路（见 `05-stem-any-app.md`）。
 
 ## 产物
 
@@ -45,7 +41,9 @@
 
 ## 下一步
 
-1. ~~实现 `MainHook` 的分轨分支~~ 已完成（`MainHook#hookMssMusicOnlyFeature`）。
-2. push `main` 触发 GitHub Actions 编译，下载产物。
-3. 真机：LSPosed 勾选两个作用域 → 重启 → bilibili 实测分轨 + 字幕。
-4. 抓 `logcat -s ColorOSSubtitleUnlock` 确认 hook 命中。
+两个功能均已在真机验证（见 `../docs/交接文档.md`）。日常维护：
+
+1. 改代码 → push `main` → GitHub Actions 自动编译（产物用 `gh run download` 取回）。
+2. 装了新 App 后无需操作：模块每次开机重写白名单并重启 `mmlistservice`。
+3. 真机日志：`logcat -s ColorOSSubtitleUnlock`（模块自身）与
+   `grep -a ColorOSSubtitleUnlock /data/adb/lspd/log/modules_*.log`（LSPosed 侧）。
