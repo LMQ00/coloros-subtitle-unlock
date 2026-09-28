@@ -54,8 +54,12 @@
 
 ## 作用域
 
-`app/src/main/res/values/arrays.xml` 的 `xposed_scope`：
+`app/src/main/res/values/arrays.xml` 的 `xposed_scope`（v1.10 起共 2 项）：
 
 - `com.coloros.accessibilityassistant` —— 字幕限制。引擎 `TranslateService` 与该 App 同进程，
   故单进程 hook 足够。
-- `com.oplus.atlas` —— 分轨限制（见 `04-stem-separation.md`）。
+- `android`（System Framework）—— 分轨：在 system_server 内扩白名单并 `ctl.restart mmlistservice`
+  （见 `05-stem-any-app.md`）。
+
+> `com.oplus.atlas` / `com.oplus.smartmediacontroller` 两项作用域已于 v1.9 删除（其注入
+> `mss_music_only=0` 会破坏分轨分离通路）。
