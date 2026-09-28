@@ -43,12 +43,16 @@ AudioPolicyManagerExtImpl::oplusForceOutputForMss()
 1. 读**内置**白名单 `/system_ext/etc/Multimedia_Daemon_List.xml` 作为底稿
    （它 version 最高、内容最新），**原样保留**其全部 `<name>/<attribute>` 条目 ——
    绝不改写既有 attribute；
-2. 只为「已安装但不在名单内」的包**追加** `<attribute>3</attribute>`
+2. 把名单内 attribute **bit4 置位**的条目清零为 `3`（bit4 = 「非音乐类」位：机型默认
+   `mss_music_only=1` 时这类 App 会被 `isVocalAdjustSupported` 直接拒掉，daemon 日志只打印
+   `isVocalAdjustSupported: supportType=17` 而没有随后的 `setMssEnableInt` 行 —— bilibili 就是这样被拒的；
+   实测清零后立刻放行，且分离通路不受影响）；
+3. 只为「已安装但不在名单内」的包**追加** `<attribute>3</attribute>`
    （bit0 = 支持人声调节，bit4 = 0 不受「仅音乐」判定限制）；
-3. 把 `<version>` 提到 `20991231`（必须高于内置文件的 version，否则内置文件胜出），
+4. 把 `<version>` 提到 `20991231`（必须高于内置文件的 version，否则内置文件胜出），
    写入可写的在线白名单 `/data/oplus/multimedia/Multimedia_Daemon_Online_List.xml`
    （**就地截断写**：SELinux 只允许 `write`，不允许 `rename`）；
-4. `SystemProperties.set("ctl.restart", "mmlistservice")` 让解析白名单的原生进程重读。
+5. `SystemProperties.set("ctl.restart", "mmlistservice")` 让解析白名单的原生进程重读。
 
 ### 权限依据（设备策略实测）
 
@@ -62,7 +66,7 @@ AudioPolicyManagerExtImpl::oplusForceOutputForMss()
 
 ```
 内置文件：version 20260703，mss-whitelist 26 条
-追加后：  version 20991231，26 条原样保留 + 542 条新增（attribute=3），共 231718 字节
+追加后：  version 20991231，26 条原有条目保留（其中 7 条 bit4 清零：17→3）+ 542 条新增（attribute=3），568 条
 写入 + ctl.restart mmlistservice 后：
   service call SpecailizerPLService 42 s16 com.android.chrome i32 1  → 0 ✓（原先 ffffffff）
   com.tencent.mm → 0 ✓；tv.danmaku.bili / com.netease.cloudmusic / com.heytap.music → 0 ✓（原成员不受影响）
