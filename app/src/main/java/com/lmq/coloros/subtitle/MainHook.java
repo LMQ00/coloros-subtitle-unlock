@@ -180,7 +180,24 @@ public class MainHook implements IXposedHookLoadPackage {
         while (m.find()) {
             have.add(m.group(1).trim());
         }
-        StringBuilder sb = new StringBuilder("<mss-whitelist>").append(block);
+        // 名单内 attribute 的 bit4（「非音乐类」位）会触发 isMssMusicOnly() 判定：机型默认
+        // mss_music_only=1 时这类 App 直接被拒（如 bilibili 的 17 —— daemon 只打印
+        // "isVocalAdjustSupported: supportType=17" 而没有随后的 "setMssEnableInt"）。
+        // 清零 bit4 即可放行，且不影响分离通路（attribute=3 的微信/网易云实测正常）。
+        // 非数字取值（其它 section 用的 "null"）不匹配，原样保留。
+        int cleared = 0;
+        StringBuffer buf = new StringBuffer();
+        Matcher am = Pattern.compile("<attribute>\\s*(\\d+)\\s*</attribute>").matcher(block);
+        while (am.find()) {
+            String repl = am.group(0);
+            if ((Integer.parseInt(am.group(1)) & 0x10) != 0) {
+                repl = "<attribute>" + LIST_ATTRIBUTE + "</attribute>";
+                cleared++;
+            }
+            am.appendReplacement(buf, Matcher.quoteReplacement(repl));
+        }
+        am.appendTail(buf);
+        StringBuilder sb = new StringBuilder("<mss-whitelist>").append(buf);
         int added = 0;
         for (String p : pkgs) {
             if (have.contains(p)) {
@@ -194,8 +211,8 @@ public class MainHook implements IXposedHookLoadPackage {
         String out = base.substring(0, i) + sb + base.substring(j);
         out = out.replaceFirst("<version>\\s*\\d+\\s*</version>", "<version>" + LIST_VERSION + "</version>");
         writeAll(new File(ONLINE_LIST_PATH), out);
-        log("whitelist: 保留 " + have.size() + " 条原有条目，追加 " + added + " 条（attribute="
-                + LIST_ATTRIBUTE + ", version=" + LIST_VERSION + "）");
+        log("whitelist: 保留 " + have.size() + " 条原有条目（" + cleared + " 条 bit4 清零），追加 "
+                + added + " 条（attribute=" + LIST_ATTRIBUTE + ", version=" + LIST_VERSION + "）");
         restartInitService(SERVICE_MMLISTSERVICE);
         return true;
     }
