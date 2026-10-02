@@ -11,7 +11,8 @@
 | 设计与契约 | **已定**（本文件即出处） | — |
 | 代码实现 | **已完成** | 文件清单见 §文件结构（`MainHook`/`Prefs`/`ConfigReader`/`ui/*`/res/manifest） |
 | Java 层类型检查 | **已通过**（本机 `javac`） | 对比 android.jar(API 35) + xposed api 82 + appcompat 1.7.0 + material 1.12.0 真实 API 编译无错；手法见 `development.md` §本地类型检查 |
-| 资源与 manifest 校验 | 待 CI（aapt2） | 本机无 `aapt`；`R.*` 引用已交叉核对存在（`~/tmp/sdkcheck/check_res.py`） |
+| 资源与 manifest 校验 | **已通过**（CI run `37007793510`） | `Build debug APK` 绿 = aapt2 资源链接与 manifest 合并通过；签名门禁 `Verify signing certificate` 通过 |
+| 产物符号核对 | **已通过**（本机核对） | `artifacts/coloros-subtitle-unlock-v1.11.apk`：有 `assets/xposed_init`；4 个 dex 内含 `MainHook`/`SettingsActivity`/`AppPickerDialog`/`ConfigReader` 与 prefs 键名；manifest 含 `xposedsharedprefs` 与 `MAIN`/`LAUNCHER` |
 | 真机打开页面、配置持久化 | 待验证（用户执行） | `testing.md` §6 |
 | 开关真正改变目标 App 行为 | **未验证** | `testing.md` §1–§3 探针 |
 

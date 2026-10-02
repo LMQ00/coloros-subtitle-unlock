@@ -71,6 +71,17 @@ javac -nowarn -cp "android-35/android.jar:$(ls jars/*.jar | tr '\n' ':')" -d out
 
 限制：`javac` 只覆盖 Java 层，**资源与 manifest 仍由 CI 的 aapt2 验证**（本机无 `aapt` / `apkanalyzer`）。
 
+## 依赖与体积
+
+引入 `androidx.appcompat` + `material`（v1.11 起，UI 用）带来两个可观测后果：
+
+- **APK 从 ~15 KB 涨到 ~5.4 MB**（v1.10 → v1.11），并且是 **multidex**（4 个 `classes*.dex`）；
+  CI 走 `assembleDebug`（`minifyEnabled false`），未做 R8 精简。
+- hook 侧代码**不得引用**这些库（`AGENTS.md` 规则 10）：模块 dex 会被 LSPosed 注入
+  system_server 与目标 App 进程，UI 栈在那里没有保证。
+
+代价与收益的取舍见 `06-module-ui.md` §技术选型（含被否决的 Kotlin/Compose、RemotePreferences、轮询方案）。
+
 ## 逆向工具链
 
 - **反编译**：`jadx`（Termux 自带）。大 APK 必须 `JAVA_OPTS="-Xmx8g"` + `--no-res`；
