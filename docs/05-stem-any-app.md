@@ -38,21 +38,25 @@ AudioPolicyManagerExtImpl::oplusForceOutputForMss()
 
 ## 正确做法：只扩名单
 
-模块作用域加 **System Framework**（`android`），在 system_server（uid 1000）内：
+模块作用域加 **System Framework**（`android`），在 system_server（uid 1000）内按设置页的
+**手动白名单**生成在线名单（v1.11 起；v1.10 及以前是「枚举全部已安装包全量追加」，已废弃）。
+prefs 契约与完整规则见 `06-module-ui.md`，此处只讲机制要点：
 
 1. 读**内置**白名单 `/system_ext/etc/Multimedia_Daemon_List.xml` 作为底稿
    （它 version 最高、内容最新），**原样保留**其全部 `<name>/<attribute>` 条目 ——
-   绝不改写既有 attribute；
-2. 把名单内 attribute **bit4 置位**的条目清零为 `3`（bit4 = 「非音乐类」位：机型默认
-   `mss_music_only=1` 时这类 App 会被 `isVocalAdjustSupported` 直接拒掉，daemon 日志只打印
-   `isVocalAdjustSupported: supportType=17` 而没有随后的 `setMssEnableInt` 行 —— bilibili 就是这样被拒的；
-   实测清零后立刻放行，且分离通路不受影响）；
-3. 只为「已安装但不在名单内」的包**追加** `<attribute>3</attribute>`
+   未勾选的内置条目一律不改写（增量语义：出厂就放行的音乐类 App 不受影响）；
+2. 对**已勾选且在内置名单里**的包，把该条 attribute **bit4 置位**清零为 `3`
+   （bit4 = 「非音乐类」位：机型默认 `mss_music_only=1` 时这类 App 会被 `isVocalAdjustSupported`
+   直接拒掉，daemon 日志只打印 `isVocalAdjustSupported: supportType=17` 而没有随后的
+   `setMssEnableInt` 行 —— bilibili 就是这样被拒的；实测清零后立刻放行，且分离通路不受影响）；
+3. 对**已勾选但不在名单内**的包**追加** `<attribute>3</attribute>`
    （bit0 = 支持人声调节，bit4 = 0 不受「仅音乐」判定限制）；
 4. 把 `<version>` 提到 `20991231`（必须高于内置文件的 version，否则内置文件胜出），
    写入可写的在线白名单 `/data/oplus/multimedia/Multimedia_Daemon_Online_List.xml`
    （**就地截断写**：SELinux 只允许 `write`，不允许 `rename`）；
 5. `SystemProperties.set("ctl.restart", "mmlistservice")` 让解析白名单的原生进程重读。
+6. **关闭分轨开关**：写「内置原样内容 + `<version>0</version>`」并 restart —— version 低于内置 ⇒
+   内置文件胜出 ⇒ 回到出厂行为。不依赖未验证的 unlink 权限。
 
 ### 权限依据（设备策略实测）
 
@@ -70,6 +74,8 @@ daemon logcat 必须出现 `isVocalAdjustSupported: supportType=3` **且**紧随
 
 ## 局限
 
-- 需要 **System Framework** 作用域；模块在该进程内只跑一个后台线程 + 一次文件写，不做方法 hook。
-- 每次开机重写白名单并重启一次 `mmlistservice`（进程无状态）。
+- 需要 **System Framework** 作用域；模块在该进程内只跑一个后台线程 + 文件写，不做方法 hook。
+- 每次开机重写白名单并重启一次 `mmlistservice`（进程无状态）；在设置页改配置会**立即**再重写一次
+  （由 `XSharedPreferences` 的变更监听触发，机制见 `06-module-ui.md`）。
+- **新装 App 默认不放行**：必须在设置页勾选（v1.11 起；这推翻了 v1.10 的「装了自动放行」行为）。
 - 不触碰 `mss_music_only`，因此分轨的**分离通路**与出厂行为完全一致。

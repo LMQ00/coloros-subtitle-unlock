@@ -1,10 +1,37 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!--
+      包可见性：Android 11+ 需要显式声明才能看到这些包。
+      - MAIN/LAUNCHER 意图：设置页的应用选择器（只列有启动图标的用户 App）
+      - 两个目标 App：状态区显示「是否已安装」
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <package android:name="com.coloros.accessibilityassistant" />
+        <package android:name="com.oplus.smartmediacontroller" />
+    </queries>
+
     <application
         android:allowBackup="false"
-        android:label="ColorOS AI 音频解锁"
-        android:supportsRtl="true">
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.ColorOSAudioUnlock">
+
+        <!-- 模块设置页：桌面图标 + LSPosed 管理器「打开」（两者都依赖 MAIN/LAUNCHER） -->
+        <activity
+            android:name=".ui.SettingsActivity"
+            android:exported="true"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
 
         <meta-data
             android:name="xposedmodule"
@@ -18,6 +45,13 @@
         <meta-data
             android:name="xposedscope"
             android:resource="@array/xposed_scope" />
+        <!--
+          启用 LSPosed 新版 XSharedPreferences：让模块进程能以 MODE_WORLD_READABLE 写 prefs、
+          hook 侧能用 XSharedPreferences 读取并监听变更（见 docs/06-module-ui.md）。
+        -->
+        <meta-data
+            android:name="xposedsharedprefs"
+            android:value="true" />
 
     </application>
 

@@ -50,7 +50,9 @@
 
 - 源码：`module/`（Gradle + AGP 8.5.2，Java 17，compileSdk 35）
 - CI：`.github/workflows/build.yml`，push 到 `main` 触发 `gradle assembleDebug`
-- 依赖：`compileOnly 'de.robv.android.xposed:api:82'`（仓库 `https://api.xposed.info/`）
+- 依赖：`compileOnly 'de.robv.android.xposed:api:82'`（仓库 `https://api.xposed.info/`）；
+  UI 另用 `androidx.appcompat` / `material`（hook 侧不得引用，见 `06-module-ui.md`）。
+  完整工程参数与 CI 见 `development.md`。
 
 ## 作用域
 
@@ -58,8 +60,8 @@
 
 - `com.coloros.accessibilityassistant` —— 字幕限制。引擎 `TranslateService` 与该 App 同进程，
   故单进程 hook 足够。
-- `android`（System Framework）—— 分轨：在 system_server 内扩白名单并 `ctl.restart mmlistservice`
-  （见 `05-stem-any-app.md`）。
+- `android`（System Framework）—— 分轨：在 system_server 内按设置页勾选扩白名单并 `ctl.restart mmlistservice`
+  （见 `05-stem-any-app.md`、`06-module-ui.md`）。
 
 > `com.oplus.atlas` / `com.oplus.smartmediacontroller` 两项作用域已于 v1.9 删除（其注入
 > `mss_music_only=0` 会破坏分轨分离通路）。

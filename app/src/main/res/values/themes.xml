@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Material3 无 ActionBar：设置页用布局里的 Toolbar 顶栏 -->
+    <style name="Theme.ColorOSAudioUnlock" parent="Theme.Material3.DayNight.NoActionBar" />
+</resources>

@@ -1,74 +1,50 @@
 # ColorOS AI 音频功能解锁 (LSPosed 模块)
 
-解除 ColorOS 16 系统 AI 音频功能的客户端限制。当前两个功能：
+解除 ColorOS 16 系统 AI 音频功能的**客户端限制**。两个功能：
 
-| 功能 | 目标 App | 原理 |
+| 功能 | 目标 App | 现状 |
 |---|---|---|
-| 字幕每月 120 分钟限制 | `com.coloros.accessibilityassistant`（AI 语音摘记） | 丢弃云端限制状态码 `3000803` → `-2020`，并改写「本月剩余时长」 |
-| 声音分轨限音乐 App | `com.oplus.smartmediacontroller`（声音分轨） | 三条注入路径（均在 Java 层、不碰 native）：Atlas 内让特性 `oplus.software.audio.mss_music_only` 判定为 false；Atlas 内所有 `setParameters` 追加该参数；**目标 App 自身**在 `MssService` 启动时直接下发 |
+| 字幕每月 120 分钟限制 | `com.coloros.accessibilityassistant`（AI 语音摘记） | 模块已实现，**真机已验证** |
+| 声音分轨限名单 App | `com.oplus.smartmediacontroller`（声音分轨） | 模块已实现（`system_server` 内按设置页勾选扩白名单），**真机已验证**（v1.10 全量路线） |
 
-> 逆向对象（在仓库上一层）：`../AI 语音摘记_16.3.12.apk`（versionCode 1603012）、
-> `../声音分轨_16.1.20.apk`（versionCode 16001020）
+> 逆向对象在仓库上一层：`../AI 语音摘记_16.3.12.apk`、`../声音分轨_16.1.20.apk`。
 
-## 原理
+**本 README 只做导航**：事实的唯一出处是 `docs/`（见下表），此处不复述机制与参数，避免两处漂移。
 
-逆向结论见 `docs/`：
+## 文档
 
-- **字幕**（`docs/01-reverse-notes.md`、`docs/02-module-design.md`）：
-  云端 ASR 经 AIUnit 下发错误码 `3000803`（"月额度已达限"），
-  `com.coloros.translate.engine.asr.asrclient.h#e` 将其映射为
-  `e4.c.ASR_MONTHLY_LIMIT_REACHED(-2020)`，引擎分发器
-  `com.coloros.translate.engine.asr.s#onResultStatus` 转发给各 WorkManager，
-  `GlobalSubtitleWorkManager`（混淆类 `g0`）停止字幕并弹「已达上限」。
-  模块在三个层面丢弃限制状态码，并把「本月剩余时长」改写为极大值。
-- **声音分轨**（`docs/04-stem-separation.md`）：
-  native 系统服务 `SpecailizerPLService` 的 `isVocalAdjustSupported(pkg)` 要求包名在
-  `mss-whitelist`（XML）中且不受「仅音乐」开关限制；该开关由音频参数 `mss_music_only` 决定，
-  而它是否被置 0 取决于设备特性 `oplus.software.audio.mss_music_only`
-  （`OplusAtlasService` 初始化时判断）。模块在 `com.oplus.atlas` 进程内做两件事：
-  让该特性判定为 false（主路径，Atlas 自己下发 `mss_music_only=0`），
-  并给该进程内所有 `AudioManager.setParameters` 追加 `;mss_music_only=0`（兜底，
-  同时覆盖 audioserver 重启后参数回落为默认 1 的情形）。
-  这两条都要求 **Atlas 进程重建过**（LSPosed 只在目标进程启动时注入 hook）。
-  因此还有第三条路径：在「声音分轨」App 自身进程（它也持 `MODIFY_AUDIO_SETTINGS`）的
-  `MssService.onStartCommand` 里直接下发参数——面板每次打开都会走，**不必重启 Atlas 或整机**。
+| 想知道什么 | 读 |
+|---|---|
+| 接手第一步：现状、任务路由表、环境、未做缺口 | `docs/交接文档.md` |
+| 项目总览、模块作用域、产物清单 | `docs/README.md` |
+| 工程参数、构建与 CI、签名门禁、逆向工具链、真机日志 | `docs/development.md` |
+| 怎么验证、「现在算不算完成」、装机与作用域、回滚 | `docs/testing.md` |
+| 模块设置页：UI 结构、配置契约、白名单生成规则 | `docs/06-module-ui.md` |
+| 字幕/分轨的逆向证据链与设计 | `docs/01`–`docs/05` |
+| 工程硬性约束与开发规范 | `AGENTS.md` |
 
-## 构建
-
-本项目通过 **GitHub Actions** 编译（本地不编译）：
-
-- 推送到 `main` 触发 `.github/workflows/build.yml`
-- 产物：Actions 页面 → `coloros-subtitle-unlock-apk` 工件（debug 签名，可直接安装）
-
-## 安装
+## 使用
 
 1. **只有从旧版（未固定签名的构建）升级时才需要先卸载一次**：
-   `/system/bin/pm uninstall com.lmq.coloros.subtitle`
-   固定签名之后，后续构建可直接覆盖安装。
-2. 安装 `artifacts/coloros-subtitle-unlock-v1.5.apk`（含分轨三条注入路径）。
-3. LSPosed 中启用模块，作用域勾选「AI 语音摘记」+「Atlas」+「声音分轨」三个。
-4. 让被 hook 的进程重建一次（LSPosed 只在进程启动时注入）：
-   - 只测分轨 → 强停「声音分轨」App 即可（`su -c "am force-stop com.oplus.smartmediacontroller"`）；
-   - 要字幕也生效 → 重启整机。
+   `/system/bin/pm uninstall com.lmq.coloros.subtitle`；固定签名之后可直接覆盖安装。
+2. 安装 CI 产物（debug 签名；命名与取回方式见 `docs/development.md`）。
+3. LSPosed 中启用模块，作用域勾选**两项**：`AI 语音摘记` + `System Framework`（`android`）。
+   **不要**勾 `com.oplus.atlas` / `声音分轨` —— v1.9 起已无它们的代码。
+4. 打开模块设置页（桌面图标或 LSPosed 管理器的「打开」）：
+   - 两个字幕/分轨总开关；
+   - **分轨白名单**：v1.11 起不再自动放行全部 App，需要哪个 App 用分轨就在设置页勾选它
+     （新装 App 默认不放行）；
+   - 保存后**无需重启**，模块会立即重写白名单并让 `mmlistservice` 重读。
+5. 两个开关都是**即时生效**：字幕 hook 在每个回调里读配置缓存，分轨侧由配置变更事件触发重写；
+   不需要重启目标 App 或整机。
 
 ## 构建与签名
 
-签名密钥固定：keystore **不进仓库**，以仓库 secrets 保存，CI 构建时还原。
+走 GitHub Actions（push `main` → `.github/workflows/build.yml`），产物从 Actions 工件取回。
 
-| secret | 用途 |
-|---|---|
-| `KEYSTORE_BASE64` | keystore（PKCS12）的 base64 |
-| `KEYSTORE_PASSWORD` | store password |
-| `KEY_ALIAS` | `coloros-unlock` |
-| `KEY_PASSWORD` | key password |
-
-`app/build.gradle` 由环境变量 `KEYSTORE_PATH` 驱动 `signingConfigs.ci`；无这些变量时
-回退到 AGP 默认 debug 签名（本地无密钥也能构建）。
-
-CI 最后一步 `Verify signing certificate` 用 `apksigner --print-certs` 取出证书 sha256，
-与 workflow 里写死的 `EXPECTED_CERT_SHA256` 比对，**不符即中断构建**——
-secrets 配错或 keystore 换了都会立刻红，不会静默产出签名不一致的包。
-换密钥时须同步更新 workflow 里的 `EXPECTED_CERT_SHA256` 与本节指纹（换密钥后需卸载重装一次）。
+签名密钥固定：keystore **不进仓库**，以仓库 secrets 保存（`KEYSTORE_BASE64` / `KEYSTORE_PASSWORD` /
+`KEY_ALIAS` / `KEY_PASSWORD`），CI 还原后签名。CI 最后一步用 `apksigner --print-certs` 校验证书
+sha256（`EXPECTED_CERT_SHA256`），**不符即中断构建**，不会静默产出签名不一致的包。
 
 证书 sha256：`57df9c0d999ea701131b4c1b3c9565c545102c030cea1db59645e4e47002f0bd`。
 连续两次 CI 构建产出**字节相同**的 APK，可直接覆盖安装。
@@ -78,9 +54,10 @@ secrets 配错或 keystore 换了都会立刻红，不会静默产出签名不�
 
 ## 已知限制
 
-- **字幕**：配额由云端 / 系统 AIUnit (`com.oplus.aiunit`) 判定，本模块只解除**客户端对限制的反应**。
-  若云端在返回 `3000803` 后彻底停止下发识别结果，仅靠客户端模块无法恢复。
-- **声音分轨**：只对 `mss-whitelist` 内、且属性含「非音乐类」位的 App 生效
-  （如 bilibili、B站HD、优酷、学习通、百度网盘、网易慕课）。
-  **不在白名单内的 App 仍不支持**——那需要改白名单数据（需 root）或 hook native，
-  均超出本模块范围。
+见 `docs/交接文档.md` §未做 / 已知缺口。要点：
+
+- **字幕**：配额由云端 / 系统 AIUnit 判定，模块只解除**客户端对限制的反应**；若云端在 `3000803`
+  后彻底停止下发识别结果，客户端模块无法恢复。
+- **分轨**：`attribute=2`（不支持人声调节）的包即使勾选也不保证可用；其它机型需按
+  `docs/05-stem-any-app.md` §权限依据重验。
+- **设置页状态区**只显示配置意图，真实生效结果要用 `docs/testing.md` 的探针自查。

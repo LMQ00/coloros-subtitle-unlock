@@ -297,7 +297,8 @@ v1.10 起为「已安装但不在名单内」的包**追加**条目，任意 App
 ## 已知限制
 
 - ~~参数不持久~~：仅在走 `mss_music_only` 路线时成立。**当前方案不使用该参数**，不受影响。
-- ~~仅白名单内~~：v1.10 起已扩名单覆盖全部已安装应用，见 `05-stem-any-app.md`。
+- ~~仅白名单内~~：v1.10 起扩名单、v1.11 起改为**设置页手动白名单**（勾选的包才额外放行，
+  新装 App 默认不放行），见 `05-stem-any-app.md`、`06-module-ui.md`。
 - **需要 System Framework 作用域**：写白名单文件与 `ctl.restart mmlistservice` 要求 uid=1000 +
   对应 SELinux 权限，只有 system_server 同时满足（依据见 `05-stem-any-app.md`）。
 

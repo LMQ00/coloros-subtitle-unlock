@@ -11,6 +11,14 @@
 4. **同名内部类**：`com.coloros.accessibilityassistant.subtitle.globalsummary.g0` 与 `subtitle.g0` 都存在，
    写 hook 必须用全限定名 + `$内部类`，否则匹配错类。
 
+## 判定顺序（经验规则，原 `AGENTS.md` §经验规则）
+
+- **判定点若在 native，先找「数据/开关」，再考虑 hook**：按
+  `.so` 字符串常量 → XML 配置 / `SystemProperties` / 音频参数 → 调用方 的顺序排查。
+  本案的限制既不是硬编码逻辑也不是云端状态码，而是「XML 白名单 + 一个音频参数」。
+- **只 hook 目标 App 之前，先确认判定方是谁**：如果目标 App 只是调用方（判定在别的进程），
+  客户端 hook 只改 UI、不产生实际效果。
+
 ## 机制理解
 
 5. **误判为本地限制**：一开始怀疑 App 本地累计时长并拦截。实际全链路排查（SharedPreferences、计时器、配额字段）

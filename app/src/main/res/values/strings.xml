@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ColorOS AI 音频解锁</string>
+    <string name="settings_title">模块设置</string>
+
+    <string name="subtitle_title">字幕解锁</string>
+    <string name="subtitle_desc">丢弃「本月额度已达上限」等限制状态码，把剩余时长显示为极大值。关闭后完全走原逻辑。</string>
+
+    <string name="stem_title">分轨解锁</string>
+    <string name="stem_desc">按下方白名单放行 App 的声音分轨。关闭时写回内置名单（version 0），恢复出厂行为。</string>
+
+    <string name="whitelist_title">分轨白名单</string>
+    <string name="whitelist_desc">只影响名单内的 App；未勾选的内置条目保持原样（增量语义）。新装 App 默认不放行。</string>
+    <string name="add_app">添加应用</string>
+    <string name="empty_whitelist">尚未勾选任何 App（当前等同出厂名单）</string>
+
+    <string name="search_hint">搜索应用</string>
+    <string name="ok">确定</string>
+    <string name="cancel">取消</string>
+
+    <string name="remove_title">移出白名单</string>
+    <string name="remove_msg">把「%1$s」移出白名单？该 App 将回到出厂的分轨判定。</string>
+
+    <string name="status_title">状态（配置意图，非真实生效结果）</string>
+    <string name="status_channel_ok">配置通道：正常（hook 侧可读）</string>
+    <string name="status_channel_bad">配置通道：异常 —— MODE_WORLD_READABLE 不可用（xposedsharedprefs 未生效，或模块未被 LSPosed 注入自身进程）</string>
+    <string name="status_selected">已勾选 App：%1$d 个</string>
+    <string name="status_installed">%1$s：已安装</string>
+    <string name="status_missing">%1$s：未安装</string>
+    <string name="status_note">真实生效结果请按 docs/testing.md 的探针命令自查（logcat -s ColorOSSubtitleUnlock）。</string>
+
+    <string name="saved">已保存，模块将在数秒内应用</string>
+    <string name="saved_degraded">已保存，但配置通道异常，hook 侧可能读不到</string>
+</resources>

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 自绘图标：声波条（center 72dp 安全区内） -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#7FD1FF"
+        android:pathData="M36,46h5v16h-5z" />
+    <path
+        android:fillColor="#7FD1FF"
+        android:pathData="M45,38h5v32h-5z" />
+    <path
+        android:fillColor="#7FD1FF"
+        android:pathData="M54,42h5v24h-5z" />
+    <path
+        android:fillColor="#7FD1FF"
+        android:pathData="M63,34h5v40h-5z" />
+</vector>

@@ -1,8 +1,5 @@
 package com.lmq.coloros.subtitle;
 
-import android.content.Context;
-import android.content.pm.PackageInfo;
-import android.content.pm.PackageManager;
 import android.util.Log;
 
 import java.io.ByteArrayOutputStream;
@@ -79,17 +76,41 @@ public class MainHook implements IXposedHookLoadPackage {
 
     private static final long UNLIMITED_DURATION = 999_999_999L;
 
+    /** 匹配 `<name>` 及其后紧邻的 `<attribute>`（只在 `<mss-whitelist>` 段内使用）。 */
+    private static final Pattern ENTRY = Pattern.compile(
+            "<name>\\s*([^<]+?)\\s*</name>(\\s*)(<attribute>\\s*(\\d+)\\s*</attribute>)?");
+
+    /** 字幕侧配置（UI 写、这里只读；null = 尚未装载）。 */
+    private static volatile ConfigReader sSubtitleConfig;
+
+    /** 分轨侧配置。 */
+    private static volatile ConfigReader sConfig;
+
+    /** 配置变更 → 唤醒分轨工作线程。 */
+    private static final Object CONFIG_LOCK = new Object();
+    private static boolean configDirty = true;
+    /** 「prefs 不可读」只打一次，避免每 5 秒重试都刷日志。 */
+    private static boolean prefsMissingLogged;
+
+    /** 字幕开关；配置未装载或不可读时按默认值（解锁）处理。 */
+    private static boolean subtitleUnlocked() {
+        ConfigReader c = sSubtitleConfig;
+        return c == null || !c.isAvailable() || c.subtitleUnlock();
+    }
+
     @Override
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lp) {
         if (TARGET_PKG_SYSTEM.equals(lp.packageName)) {
             log("module loading in system_server (System Framework)");
-            startWhitelistUnlock(lp.classLoader);
+            startWhitelistUnlock();
             return;
         }
         if (!TARGET_PKG.equals(lp.packageName)) {
             return;
         }
         log("module loading in " + lp.packageName + " (pid=" + android.os.Process.myPid() + ")");
+        // UI 写、这里只读；开关变化由 XSharedPreferences 的文件监听刷新缓存（见 ConfigReader）。
+        sSubtitleConfig = new ConfigReader(null);
         hookStatusDispatcher(lp.classLoader);
         hookAsrGlobalParser(lp.classLoader);
         hookWorkManagerListeners(lp.classLoader);
@@ -98,7 +119,7 @@ public class MainHook implements IXposedHookLoadPackage {
         hookStopGuards(lp.classLoader);
     }
 
-    // ================= 分轨「任意 App」：追加式白名单（system_server） =================
+    // ================= 分轨「任意 App」：按设置页勾选的手动白名单（system_server） =================
 
     /**
      * 判定链全在 native，不经过 Java：
@@ -118,46 +139,95 @@ public class MainHook implements IXposedHookLoadPackage {
      * （audioserver 日志：{@code chooseWhichTrackToProcess_l ... tracks[0|0] voc_adj_on[0]}）。
      * 故本模块**绝不触碰该参数**，只做「把 App 加进名单」这一件事。
      *
-     * 做法（仅 system_server 内）：
+     * 做法（仅 system_server 内，按设置页的**手动白名单**生成；契约见 docs/06-module-ui.md）：
      * <ol>
      *   <li>以**内置**白名单 {@code /system_ext/etc/Multimedia_Daemon_List.xml} 为底（version 最高、
-     *       内容最新），原样保留其全部条目（**绝不改写既有 attribute**）；</li>
-     *   <li>只为「已安装但不在名单内」的包**追加** {@code attribute=3}（bit0 支持人声调节、bit4 清零）；</li>
-     *   <li>把 {@code <version>} 提到 {@code 20991231}（必须高于内置文件），写入可写的在线白名单
+     *       内容最新），原样保留其全部条目；</li>
+     *   <li>只为**已勾选**的包改写/追加 {@code attribute=3}（bit0 支持人声调节、bit4 清零）——
+     *       未勾选的内置条目一律不动（增量语义）；</li>
+     *   <li>勾选为空或开关关闭 ⇒ 写「内置原样 + {@code <version>0</version>}」，
+     *       version 低于内置 ⇒ 内置文件胜出 ⇒ 回到出厂行为；</li>
+     *   <li>否则把 {@code <version>} 提到 {@code 20991231}（必须高于内置文件），写入可写的在线白名单
      *       {@code /data/oplus/multimedia/Multimedia_Daemon_Online_List.xml}（就地截断写：SELinux
      *       只允许 write、不允许 rename）；</li>
      *   <li>{@code SystemProperties.set("ctl.restart","mmlistservice")} 让解析白名单的原生进程重读
      *       （策略依据：{@code allow system_server ctl_restart_prop (property_service (set))}；
      *        而 {@code process signal} 对 mmlistservice 不允许 ⇒ kill 走不通）。</li>
      * </ol>
+     * 配置由 UI 进程写、这里只读（{@link ConfigReader}）；变更经 XSharedPreferences 文件监听通知，
+     * 因此改设置后无需重启设备。
      */
-    private static void startWhitelistUnlock(final ClassLoader cl) {
+    private static void startWhitelistUnlock() {
+        sConfig = new ConfigReader(new ConfigReader.Listener() {
+            @Override
+            public void onConfigChanged() {
+                synchronized (CONFIG_LOCK) {
+                    configDirty = true;
+                    CONFIG_LOCK.notifyAll();
+                }
+            }
+        });
         Thread t = new Thread(new Runnable() {
             @Override
             public void run() {
-                for (int i = 0; i < 60; i++) {
-                    try {
-                        if (extendWhitelist(cl)) {
-                            return;
-                        }
-                    } catch (Throwable th) {
-                        log("whitelist attempt " + i + " failed: " + th);
-                    }
-                    try {
-                        Thread.sleep(5_000L);
-                    } catch (InterruptedException e) {
-                        return;
-                    }
-                }
-                log("whitelist: gave up");
+                whitelistLoop();
             }
         }, "mss-whitelist-unlock");
         t.setDaemon(true);
         t.start();
     }
 
-    /** @return 是否已完成（成功或无需处理） */
-    private static boolean extendWhitelist(ClassLoader cl) throws Throwable {
+    /**
+     * 单工作线程：等配置 → 写白名单 → 再等变更通知。
+     *
+     * <p>读到配置之后**完全是事件驱动**（{@code onConfigChanged} → {@code notifyAll}），不做变更轮询；
+     * 只有在「prefs 尚不可读 / 内置文件尚不可读」（首次安装、开机早期）时才每 5 秒重试一次。
+     */
+    private static void whitelistLoop() {
+        while (true) {
+            synchronized (CONFIG_LOCK) {
+                if (!configDirty) {
+                    try {
+                        CONFIG_LOCK.wait();
+                    } catch (InterruptedException e) {
+                        return;
+                    }
+                    continue;
+                }
+                configDirty = false;
+            }
+            boolean ok;
+            try {
+                ok = applyWhitelist();
+            } catch (Throwable th) {
+                log("whitelist: apply failed: " + th);
+                ok = false;
+            }
+            if (ok) {
+                continue;
+            }
+            try {
+                Thread.sleep(5_000L);
+            } catch (InterruptedException e) {
+                return;
+            }
+            synchronized (CONFIG_LOCK) {
+                configDirty = true;
+            }
+        }
+    }
+
+    /** 按当前配置应用一次：生成在线白名单并让 mmlistservice 重读。 */
+    private static boolean applyWhitelist() throws Throwable {
+        ConfigReader cfg = sConfig;
+        if (cfg == null || !cfg.isAvailable()) {
+            // 没有用户意图（prefs 读不到）就不动系统文件；工作线程每 5 秒重试，直到读到配置。
+            if (!prefsMissingLogged) {
+                prefsMissingLogged = true;
+                log("whitelist: prefs 不可读，跳过写入");
+            }
+            return false;
+        }
         File builtin = new File(BUILTIN_LIST_PATH);
         if (!builtin.exists()) {
             log("whitelist: 内置文件不存在，跳过");
@@ -170,37 +240,60 @@ public class MainHook implements IXposedHookLoadPackage {
             log("whitelist: 内置文件缺少 <mss-whitelist> 段，跳过");
             return true;
         }
-        List<String> pkgs = installedPackages(cl);
-        if (pkgs.isEmpty()) {
-            return false;
+        File online = new File(ONLINE_LIST_PATH);
+        Set<String> want = cfg.stemWhitelist();
+
+        if (!cfg.stemUnlock() || want.isEmpty()) {
+            // 关闭（或白名单为空）：写内置原样 + version 0 ⇒ version 低于内置 ⇒ 内置文件胜出 = 出厂行为。
+            writeAll(online, withVersion(base, "0"));
+            log("whitelist: 关闭（写内置原样 + version 0）");
+            restartInitService(SERVICE_MMLISTSERVICE);
+            return true;
         }
+
+        String head = base.substring(0, i);
         String block = base.substring(i + "<mss-whitelist>".length(), j);
+        String tail = base.substring(j);
+
         Set<String> have = new HashSet<String>();
-        Matcher m = Pattern.compile("<name>\\s*([^<]+?)\\s*</name>").matcher(block);
-        while (m.find()) {
-            have.add(m.group(1).trim());
+        Matcher nm = Pattern.compile("<name>\\s*([^<]+?)\\s*</name>").matcher(block);
+        while (nm.find()) {
+            have.add(nm.group(1).trim());
         }
-        // 名单内 attribute 的 bit4（「非音乐类」位）会触发 isMssMusicOnly() 判定：机型默认
-        // mss_music_only=1 时这类 App 直接被拒（如 bilibili 的 17 —— daemon 只打印
-        // "isVocalAdjustSupported: supportType=17" 而没有随后的 "setMssEnableInt"）。
-        // 清零 bit4 即可放行，且不影响分离通路（attribute=3 的微信/网易云实测正常）。
-        // 非数字取值（其它 section 用的 "null"）不匹配，原样保留。
+
+        // 只对**已勾选**的包改写 attribute：写成 3（bit0 支持人声调节 + bit4 清零）。
+        // 未勾选的内置条目原样保留 —— 这是「增量语义」，也是与 v1.10「无条件全量清 bit4」的区别。
         int cleared = 0;
         StringBuffer buf = new StringBuffer();
-        Matcher am = Pattern.compile("<attribute>\\s*(\\d+)\\s*</attribute>").matcher(block);
-        while (am.find()) {
-            String repl = am.group(0);
-            if ((Integer.parseInt(am.group(1)) & 0x10) != 0) {
-                repl = "<attribute>" + LIST_ATTRIBUTE + "</attribute>";
-                cleared++;
+        Matcher em = ENTRY.matcher(block);
+        while (em.find()) {
+            String pkg = em.group(1) == null ? null : em.group(1).trim();
+            String gap = em.group(2) == null ? "" : em.group(2);
+            String attr = em.group(3);
+            String digits = em.group(4);
+            String repl = em.group(0);
+            if (pkg != null && want.contains(pkg)) {
+                if (attr == null) {
+                    String sep = gap.length() == 0 ? "\n        " : gap;
+                    repl = "<name>" + em.group(1) + "</name>" + sep
+                            + "<attribute>" + LIST_ATTRIBUTE + "</attribute>";
+                    cleared++;
+                } else if (!LIST_ATTRIBUTE.equals(digits == null ? "" : digits.trim())) {
+                    repl = "<name>" + em.group(1) + "</name>" + gap
+                            + "<attribute>" + LIST_ATTRIBUTE + "</attribute>";
+                    cleared++;
+                }
             }
-            am.appendReplacement(buf, Matcher.quoteReplacement(repl));
+            em.appendReplacement(buf, Matcher.quoteReplacement(repl));
         }
-        am.appendTail(buf);
+        em.appendTail(buf);
+
         StringBuilder sb = new StringBuilder("<mss-whitelist>").append(buf);
         int added = 0;
-        for (String p : pkgs) {
-            if (have.contains(p)) {
+        List<String> sorted = new ArrayList<String>(want);
+        Collections.sort(sorted);
+        for (String p : sorted) {
+            if (p == null || p.length() == 0 || have.contains(p)) {
                 continue;
             }
             sb.append("\n        <name>").append(p).append("</name>")
@@ -208,41 +301,17 @@ public class MainHook implements IXposedHookLoadPackage {
             added++;
         }
         sb.append("\n    ");
-        String out = base.substring(0, i) + sb + base.substring(j);
-        out = out.replaceFirst("<version>\\s*\\d+\\s*</version>", "<version>" + LIST_VERSION + "</version>");
-        writeAll(new File(ONLINE_LIST_PATH), out);
-        log("whitelist: 保留 " + have.size() + " 条原有条目（" + cleared + " 条 bit4 清零），追加 "
+        String out = withVersion(head + sb + tail, LIST_VERSION);
+        writeAll(online, out);
+        log("whitelist: 保留 " + have.size() + " 条原有条目（" + cleared + " 条按勾选清零），追加 "
                 + added + " 条（attribute=" + LIST_ATTRIBUTE + ", version=" + LIST_VERSION + "）");
         restartInitService(SERVICE_MMLISTSERVICE);
         return true;
     }
 
-    private static List<String> installedPackages(ClassLoader cl) {
-        try {
-            Context ctx = systemContext(cl);
-            if (ctx == null) {
-                return Collections.emptyList();
-            }
-            PackageManager pm = ctx.getPackageManager();
-            List<String> out = new ArrayList<String>();
-            for (PackageInfo pi : pm.getInstalledPackages(0)) {
-                if (pi != null && pi.packageName != null) {
-                    out.add(pi.packageName);
-                }
-            }
-            Collections.sort(out);
-            return out;
-        } catch (Throwable t) {
-            log("whitelist: 枚举应用失败: " + t);
-            return Collections.emptyList();
-        }
-    }
-
-    /** system_server 的 Context（{@code ActivityThread.currentActivityThread().getSystemContext()}）。 */
-    private static Context systemContext(ClassLoader cl) {
-        Class<?> at = XposedHelpers.findClass("android.app.ActivityThread", cl);
-        Object thread = XposedHelpers.callStaticMethod(at, "currentActivityThread");
-        return (Context) XposedHelpers.callMethod(thread, "getSystemContext");
+    /** 替换第一个 {@code <version>} 的值（沿用旧实现对内置文件结构的假设）。 */
+    private static String withVersion(String xml, String version) {
+        return xml.replaceFirst("<version>\\s*\\d+\\s*</version>", "<version>" + version + "</version>");
     }
 
     /** 让 init 重启原生服务（system_server 有 ctl_restart_prop 的 set 权限）。 */
@@ -304,6 +373,9 @@ public class MainHook implements IXposedHookLoadPackage {
                     new XC_MethodHook() {
                         @Override
                         protected void beforeHookedMethod(MethodHookParam param) {
+                            if (!subtitleUnlocked()) {
+                                return;
+                            }
                             int from = (Integer) param.args[0];
                             int code = (Integer) param.args[1];
                             String msg = (String) param.args[2];
@@ -329,6 +401,9 @@ public class MainHook implements IXposedHookLoadPackage {
                     new XC_MethodHook() {
                         @Override
                         protected void beforeHookedMethod(MethodHookParam param) {
+                            if (!subtitleUnlocked()) {
+                                return;
+                            }
                             int raw = (Integer) param.args[0];
                             if (isLimitRaw(raw)) {
                                 log("drop raw asr code " + raw + " @ AsrGlobalParser");
@@ -356,6 +431,9 @@ public class MainHook implements IXposedHookLoadPackage {
                         new XC_MethodHook() {
                             @Override
                             protected void beforeHookedMethod(MethodHookParam param) {
+                                if (!subtitleUnlocked()) {
+                                    return;
+                                }
                                 int code = (Integer) param.args[1];
                                 if (isLimitStatus(code)) {
                                     log("drop status code " + code + " @ " + param.method.getDeclaringClass().getName());
@@ -381,6 +459,9 @@ public class MainHook implements IXposedHookLoadPackage {
                         new XC_MethodHook() {
                             @Override
                             protected void afterHookedMethod(MethodHookParam param) {
+                                if (!subtitleUnlocked()) {
+                                    return;
+                                }
                                 param.setResult(Long.valueOf(UNLIMITED_DURATION));
                             }
                         });
@@ -399,6 +480,9 @@ public class MainHook implements IXposedHookLoadPackage {
                     new XC_MethodHook() {
                         @Override
                         protected void afterHookedMethod(MethodHookParam param) {
+                            if (!subtitleUnlocked()) {
+                                return;
+                            }
                             param.setResult(Boolean.FALSE);
                         }
                     });
@@ -422,6 +506,9 @@ public class MainHook implements IXposedHookLoadPackage {
                     new XC_MethodHook() {
                         @Override
                         protected void beforeHookedMethod(MethodHookParam param) {
+                            if (!subtitleUnlocked()) {
+                                return;
+                            }
                             log("suppress " + param.method.getDeclaringClass().getSimpleName() + "#" + param.method.getName());
                             param.setResult(null);
                         }
@@ -432,7 +519,8 @@ public class MainHook implements IXposedHookLoadPackage {
         }
     }
 
-    private static void log(String msg) {
+    /** hook 侧统一日志出口（规则 R5）：TAG 固定，便于真机 `logcat -s ColorOSSubtitleUnlock`。 */
+    static void log(String msg) {
         XposedBridge.log(TAG + ": " + msg);
         Log.i(TAG, msg);
     }

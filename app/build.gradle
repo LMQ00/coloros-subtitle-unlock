@@ -46,8 +46,16 @@ android {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
+
+    // UI 与 hook 侧都用 BuildConfig.APPLICATION_ID 作为 prefs 的模块包名，避免字面量漂移。
+    buildFeatures {
+        buildConfig true
+    }
 }
 
 dependencies {
     compileOnly 'de.robv.android.xposed:api:82'
+    // UI 用（Material3）；hook 侧不得引用（见 AGENTS.md 规则 10 / docs/06-module-ui.md §分层约定）
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'com.google.android.material:material:1.12.0'
 }
