@@ -6,6 +6,7 @@ import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
 import android.os.Bundle;
 import android.view.View;
+import android.view.WindowInsets;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.ListView;
@@ -63,6 +64,16 @@ public class SettingsActivity extends AppCompatActivity {
 
         Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
         toolbar.setTitle(R.string.settings_title);
+        // targetSdk 35 起强制 edge-to-edge：给根布局补系统栏内边距，
+        // 否则标题会被状态栏压住、底部状态文字会被导航栏压住（真机 v1.11 实测）。
+        final View root = findViewById(R.id.root);
+        root.setOnApplyWindowInsetsListener(new View.OnApplyWindowInsetsListener() {
+            @Override
+            public WindowInsets onApplyWindowInsets(View v, WindowInsets insets) {
+                v.setPadding(0, insets.getSystemWindowInsetTop(), 0, insets.getSystemWindowInsetBottom());
+                return insets;
+            }
+        });
         switchSubtitle = (SwitchMaterial) findViewById(R.id.switch_subtitle);
         switchStem = (SwitchMaterial) findViewById(R.id.switch_stem);
         listWhitelist = (ListView) findViewById(R.id.list_whitelist);

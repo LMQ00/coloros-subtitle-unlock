@@ -13,8 +13,9 @@
 | Java 层类型检查 | **已通过**（本机 `javac`） | 对比 android.jar(API 35) + xposed api 82 + appcompat 1.7.0 + material 1.12.0 真实 API 编译无错；手法见 `development.md` §本地类型检查 |
 | 资源与 manifest 校验 | **已通过**（CI run `37007793510`） | `Build debug APK` 绿 = aapt2 资源链接与 manifest 合并通过；签名门禁 `Verify signing certificate` 通过 |
 | 产物符号核对 | **已通过**（本机核对） | `artifacts/coloros-subtitle-unlock-v1.11.apk`：有 `assets/xposed_init`；4 个 dex 内含 `MainHook`/`SettingsActivity`/`AppPickerDialog`/`ConfigReader` 与 prefs 键名；manifest 含 `xposedsharedprefs` 与 `MAIN`/`LAUNCHER` |
-| 真机打开页面、配置持久化 | 待验证（用户执行） | `testing.md` §6 |
-| 开关真正改变目标 App 行为 | **未验证** | `testing.md` §1–§3 探针 |
+| 真机打开页面、配置持久化 | **已通过**（2026-10-03 真机） | 页面正常渲染无崩溃；切开关后**跨进程**下发成功（目标 App 进程打印 `config: 配置变更已读入（reload=true）`）；重启设备后配置仍在且被 system_server 读到 |
+| 开关真正改变目标 App 行为 | **已通过**（2026-10-03 真机） | 关闭 ⇒ 白名单 `version 0` + 三包探针全部 `ffffffff`；开启并勾选 bilibili/微信 ⇒ `version 20991231`、bilibili `attribute 17→3`、微信追加、探针两者 `00000000` 而未勾选的 chrome 仍 `ffffffff` |
+| 真机发现并已修的缺陷 | v1.11 → v1.12 | ① 标题文字用默认色 + `colorPrimary` 浅底 → 对比度过低；② targetSdk 35 强制 edge-to-edge，标题被状态栏压住。修法：`app:titleTextColor="?attr/colorOnPrimary"` + 根布局补 `WindowInsets` 内边距 |
 
 ## 目标与范围
 
@@ -66,11 +67,21 @@ hook 侧 `new XSharedPreferences(pkg, fileName)` 读取；监听回调里 **key 
 | `app/src/main/res/values/{strings,themes}.xml` | 文案与 Material3 主题 | — |
 | `app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml` + `res/drawable/ic_launcher_*.xml` | 自适应图标（自绘 vector） | — |
 
-`MainHook.java` 的改动只涉及：字幕 hook 回调内查开关；`extendWhitelist()` 改为按 `stem_whitelist` 生成。
+`MainHook.java` 的改动只涉及：字幕 hook 回调内查开关；`applyWhitelist()` 改为按 `stem_whitelist` 生成。
 
 ## 配置契约
 
 **prefs 文件名**：`xposed_conf`（`Prefs.FILE_NAME`）
+
+**prefs 实际落盘位置**（真机实测，2026-10-03）：LSPosed 的 `xposedsharedprefs` 会把模块的 prefs 目录
+重定向到**随机目录**，因此**不在** `/data/data/com.lmq.coloros.subtitle/shared_prefs/` 下：
+
+```
+/data/misc/apexdata/<随机 uuid>/prefs/com.lmq.coloros.subtitle/xposed_conf.xml
+# 目录 drwxr-xr-x、文件 -rw-rw-r--（世界可读 ⇒ hook 侧能读；这正是 MODE_WORLD_READABLE 的作用）
+```
+
+排查时用：`su -c "find /data/misc -name xposed_conf.xml"`。
 
 | 键（`Prefs.KEY_*`） | 类型 | 默认值 | 语义 |
 |---|---|---|---|
@@ -88,7 +99,7 @@ hook 侧 `new XSharedPreferences(pkg, fileName)` 读取；监听回调里 **key 
 - 监听回调跑在 FileObserver 线程：只做「置脏 + 唤醒工作线程」，重活（读内置文件、写在线文件、
   `ctl.restart`）在工作线程做。
 
-## 白名单生成规则（`system_server` 内，`MainHook.extendWhitelist()`）
+## 白名单生成规则（`system_server` 内，`MainHook.applyWhitelist()`）
 
 1. 基础内容 = 内置 `/system_ext/etc/Multimedia_Daemon_List.xml` **原样**（保留全部 `<name>`/`<attribute>`
    与 `<version>` 之外的结构）。
@@ -142,3 +153,4 @@ UI 保存 → SharedPreferences(MODE_WORLD_READABLE) 落盘
 | 勾选 App 后分轨仍被拒 | prefs 读不到；或白名单未重写；或 `mmlistservice` 未重启 | `testing.md` §1–§3 |
 | 关掉分轨开关仍能分轨 | version 未回落到内置之下 | `testing.md` §3 看 `<version>` |
 | 状态区显示的与真机结果不一致 | 状态区只显示配置意图，不代表真实生效结果 | `testing.md` §1 |
+| 找不到 prefs 文件 | LSPosed 把模块 prefs 重定向到随机目录（不在 `/data/data/<模块包名>/shared_prefs/`） | `su -c "find /data/misc -name xposed_conf.xml"`（见 §配置契约） |

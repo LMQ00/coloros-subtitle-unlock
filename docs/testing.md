@@ -8,11 +8,12 @@
 | 功能 | 状态 | 验证方式 | 备注 |
 |---|---|---|---|
 | 字幕每月 120 分钟限制 | **已验证**（用户实测） | 真机开字幕超过限制时长后不中断 | 云端在 `3000803` 后仍继续下发识别结果，客户端 hook 有效 |
-| 分轨：内置名单内 App（bilibili 等） | v1.10 **已验证**；v1.11 待验证 | 面板可用 + 拖人声/背景有听感变化 | v1.10 修复了 `attribute=17` 被 `isMssMusicOnly()` 拒掉的问题；**v1.11 起该条 attribute 只在设置页勾选后才清零** |
-| 分轨：白名单外 App（Chrome/微信/优酷…） | v1.10 **已验证**；v1.11 待验证 | 开机后探针返回 `0`，daemon 日志出现 `setMssEnableInt` | v1.10 = 模块开机自动**全量**扩名单；**v1.11 起改为设置页手动勾选**（新装 App 默认不放行） |
+| 分轨：内置名单内 App（bilibili 等） | v1.11 **已验证** | 设置页勾选后探针返回 `0` | v1.11 起该条 attribute **只在勾选后**清零（`17 → 3`，2026-10-03 实测） |
+| 分轨：名单外 App（微信/Chrome/优酷…） | v1.11 **已验证** | 设置页勾选后探针返回 `0`；未勾选的仍 `ffffffff` | v1.11 = 设置页手动勾选（新装 App 默认不放行）；v1.10 的「自动全量放行」已废弃 |
 | 分轨：分离通路本身 | **未被修改** | 开机后 `mss_music_only` 无任何写入 | 模块不触碰该参数（见 `05-stem-any-app.md` §核心教训） |
-| 模块设置页（UI） | 代码已完成；**CI 已通过**（run `37007793510`）+ 产物符号已核对；真机待验证 | 打开页面 → 勾选 App → 杀模块进程重开，配置保留 | 设计与契约见 `06-module-ui.md`；真机步骤见本页 §6 |
-| 分轨开关「关」的回落 | 待验证 | §3 看 `<version>` 是否变为 0、探针是否重新 `ffffffff` | 依赖「version 低于内置则内置胜出」这一既有结论 |
+| 模块设置页（UI） | v1.11 **已验证**（真机） | 页面渲染无崩溃；切开关后目标 App 进程打印 `config: 配置变更已读入`；重启设备后配置保留 | 契约见 `06-module-ui.md`；步骤与现象链见本页 §6 |
+| 分轨开关「关」的回落 | **已验证** | 三包探针全部 `ffffffff`、在线白名单 `<version>0</version>` | 「version 低于内置 ⇒ 内置胜出」已由真机确认 |
+| 增删白名单是否要重启 | **已验证：不需要** | 保存后秒级生效（重写名单 + `ctl.restart mmlistservice`） | 仅装/更新模块 APK 或改作用域才需重启 |
 
 `[待确认]` 项见 `../docs/交接文档.md` §未做 / 已知缺口。
 
@@ -75,27 +76,38 @@ su -c "pidof mmlistservice"     # 每次开机应换成新 pid（被 ctl.restart
 `logcat -s ColorOSSubtitleUnlock` 应出现 `hooked engine dispatcher s#onResultStatus` 等启动日志；
 运行中出现 `drop status code -2020 @ engine dispatcher` 表示限制码被丢弃。
 
-### 6. 模块设置页（UI，v1.11）
+### 6. 模块设置页（UI）
+
+**2026-10-03 真机已验证**（v1.11 装机，Android 16/API 36，ColorOS 16）：
 
 ```sh
 # 1) 编译产物判据（CI 侧）
 gh run view <run-id> --log | tail -30          # workflow 绿
-unzip -l coloros-subtitle-unlock-v1.11.apk | grep -E 'SettingsActivity|activity_settings|ic_launcher|androidmanifest'
+unzip -l coloros-subtitle-unlock-v1.12.apk | grep -E 'classes.*dex|activity_settings|mipmap-anydpi|AndroidManifest'
 
-# 2) 装机后（真机操作，用户执行）
-#    桌面出现「ColorOS AI 音频解锁」图标；LSPosed 管理器模块页也有「打开」
+# 2) 装机（桌面出现「ColorOS AI 音频解锁」图标；LSPosed 管理器模块页也有「打开」）
 pm install -r <apk>
-# 打开页面 → 勾选一个 App（如 tv.danmaku.bili）→ 返回桌面 → 杀模块进程 → 重开页面，勾选应仍在
-am force-stop com.lmq.coloros.subtitle
 
-# 3) 配置通道是否正常（页面状态区应显示「配置通道：正常」）
-su -c "ls -l /data/data/com.lmq.coloros.subtitle/shared_prefs/"
-#    世界可读模式下该 prefs 文件应允许 other 读；文件不存在 = 从未保存过
-su -c "cat /data/data/com.lmq.coloros.subtitle/shared_prefs/xposed_conf.xml"
+# 3) 配置通道（页面状态区应显示「配置通道：正常（hook 侧可读）」）
+#    prefs 被 LSPosed 重定向到随机目录，**不在** /data/data/<模块包名>/shared_prefs/
+su -c "find /data/misc -name xposed_conf.xml"
+su -c "cat <上面找到的路径>"        # 期望 world-readable：-rw-rw-r--
 ```
 
-改完配置的期望链路（机制见 `06-module-ui.md` §生效链路）：**无需重启**，几秒内 logcat 出现新的
-`whitelist:` 行与 `restart: ctl.restart mmlistservice`，随后 §1 探针对勾选的 App 返回 `0`。
+**已验证的现象链**（改配置后**无需重启**，几秒内完成）：
+
+```
+设置页保存 → system_server 日志：
+  config: 配置变更已读入（reload=true）
+  whitelist: 保留 26 条原有条目（1 条按勾选清零），追加 1 条（attribute=3, version=20991231）
+  restart: ctl.restart mmlistservice
+→ 探针：勾选的 bilibili / 微信 = 00000000（放行），未勾选的 chrome = ffffffff（仍出厂拒绝）
+```
+
+- 关掉「分轨解锁」开关 ⇒ 写内置原样 + `<version>0</version>`，三个包探针全部回到 `ffffffff`。
+- 重启设备后配置仍在：开机日志 `whitelist: 关闭（写内置原样 + version 0）`（当时开关为关）。
+- **装/更新模块 APK 后必须重启一次**（LSPosed 仅在进程启动时注入 system_server）；
+  但**增删白名单、切开关都不需要重启**。
 
 ## 回滚
 
