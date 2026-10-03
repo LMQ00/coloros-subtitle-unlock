@@ -15,7 +15,7 @@
 | 产物符号核对 | **已通过**（本机核对） | `artifacts/coloros-subtitle-unlock-v1.11.apk`：有 `assets/xposed_init`；4 个 dex 内含 `MainHook`/`SettingsActivity`/`AppPickerDialog`/`ConfigReader` 与 prefs 键名；manifest 含 `xposedsharedprefs` 与 `MAIN`/`LAUNCHER` |
 | 真机打开页面、配置持久化 | **已通过**（2026-10-03 真机） | 页面正常渲染无崩溃；切开关后**跨进程**下发成功（目标 App 进程打印 `config: 配置变更已读入（reload=true）`）；重启设备后配置仍在且被 system_server 读到 |
 | 开关真正改变目标 App 行为 | **已通过**（2026-10-03 真机） | 关闭 ⇒ 白名单 `version 0` + 三包探针全部 `ffffffff`；开启并勾选 bilibili/微信 ⇒ `version 20991231`、bilibili `attribute 17→3`、微信追加、探针两者 `00000000` 而未勾选的 chrome 仍 `ffffffff` |
-| 真机发现并已修的缺陷 | v1.11 → v1.12 | ① 标题文字用默认色 + `colorPrimary` 浅底 → 对比度过低；② targetSdk 35 强制 edge-to-edge，标题被状态栏压住。修法：`app:titleTextColor="?attr/colorOnPrimary"` + 根布局补 `WindowInsets` 内边距 |
+| 真机发现并已修的缺陷 | v1.11 → v1.12，**已在真机复验** | ① 标题文字用默认色 + `colorPrimary` 底 → 对比度过低（实测深色 **1.14:1**）；② targetSdk 35 强制 edge-to-edge，标题被状态栏压住。修法：`app:titleTextColor="?attr/colorOnPrimary"` + 根布局补 `WindowInsets` 内边距。复验：深色 **7.71:1**（`#381E72` on `#D0BCFF`）、浅色 **6.44:1**（白 on `#6750A4`），均 ≥ AA 4.5；`toolbar` bounds 从 `y=0` 变为 `y=140`（状态栏之下），底部状态文字不再触底 |
 
 ## 目标与范围
 
