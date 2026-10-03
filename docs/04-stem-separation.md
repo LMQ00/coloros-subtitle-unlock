@@ -5,7 +5,7 @@
 > 与设备预装 `/product/app/SmartMediaController/SmartMediaController.apk`
 > （`/my_product/app/…` 同 inode）**md5 完全一致**（`fedfe3c0cc66681298c65c337a1c2488`，4555687 字节）
 
-反编译 / 反汇编命令（产物保留在 `~/tmp`）：
+反编译 / 反汇编命令（产物应放 `~/tmp`；**2026-10-03 核对时这些产物在设备上已缺失**，需要时按下面命令重跑）：
 
 ```bash
 jadx -d ~/tmp/jadx-stem --no-res --threads-count 4 "../声音分轨_16.1.20.apk"        # 目标 App
@@ -255,11 +255,12 @@ return true;
 ### 范围限制（已不成立）
 
 曾写「只解决已在白名单内、属性含 `bit4` 的 App，名单外的 YouTube/Chrome 仍被拒」。
-v1.10 起为「已安装但不在名单内」的包**追加**条目，任意 App 均可分轨 —— 见 `05-stem-any-app.md`。
+v1.10 曾为「已安装但不在名单内」的包**全量追加**；**v1.11 起改为设置页手动白名单**——
+只有勾选的包才追加（或清零 bit4），新装 App 默认不放行，见 `05-stem-any-app.md`、`06-module-ui.md`。
 
 ## 生效条件与验证（已迁移）
 
-安装、作用域、重启与验证步骤统一见 `05-stem-any-app.md`（当前 v1.10，作用域仅
+安装、作用域、重启与验证步骤统一见 `05-stem-any-app.md`（当前 v1.12，作用域仅
 `com.coloros.accessibilityassistant` + `android` 两项）。历史版本 v1.5 的步骤（Atlas 作用域 +
 强停 Atlas）已失效，不再保留。
 
@@ -288,7 +289,7 @@ v1.10 起为「已安装但不在名单内」的包**追加**条目，任意 App
 | `tv.danmaku.bili` | 已安装（`/data/app/…/tv.danmaku.bili-…/base.apk`） |
 | `com.oplus.smartmediacontroller` | `/product/app/SmartMediaController/SmartMediaController.apk`（与 `/my_product/app/…` 同 inode 9815556，是同一文件） |
 | `com.oplus.atlas` | `/system_ext/app/OplusAtlasService/OplusAtlasService.apk` |
-| `com.lmq.coloros.subtitle` | 已安装（旧版本，尚未升级到 v1.3） |
+| `com.lmq.coloros.subtitle` | 已安装（2026-10-03 核对为 v1.12） |
 | `dumpsys -l` | `AtlasService`、`MMListService` 均在运行 |
 
 - 运行时可观测性受限：`dumpsys media.audio_flinger` / `dumpsys AtlasService` 对非 shell uid 均拒绝
@@ -375,7 +376,11 @@ native 日志：isVocalAdjustSupported: supportType=17 → setMssEnableInt --- t
 把 audioserver 的标志置 0 即可。模块在 SMC 进程 `MssService.onStartCommand` 入口注入，正好早于
 App 调 `setMssEnable`（面板打开即触发）⇒ 重启一次设备后应能正常生效。
 
-## 未决问题（仅剩真机项）
+## 未决问题（**已随该路线废弃，见上**）
 
-- hook 是否真被 LSPosed 加载进 `com.oplus.atlas`（作用域是否勾选）→ 真机看日志。
-- audioserver 是否接受 Atlas 下发的参数（静态上权限与路径都已满足）→ 真机看是否真的放行。
+> 下面两条针对已废弃的 `mss_music_only` 路线（v1.9 起作用域已不含 `com.oplus.atlas`），
+> 保留作历史记录：当时（2026-09-25）真机实测探针返回 `0`，说明这两点都已成立。
+
+- ~~hook 是否真被 LSPosed 加载进 `com.oplus.atlas`~~ → 当年实测成立；该作用域现已删除。
+- ~~audioserver 是否接受 Atlas 下发的参数~~ → 当年实测成立（`KVP received: mss_music_only=0`）；
+  但该路线的副作用见 §真正的机制与 `05-stem-any-app.md` §核心教训，已不再使用。

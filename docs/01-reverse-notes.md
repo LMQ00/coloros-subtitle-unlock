@@ -8,7 +8,7 @@
 > 设备实测：与预装 `/product/app/ColorAccessibilityAssistant/ColorAccessibilityAssistant.apk`
 > **md5 完全一致**（`1541e6a457e6d1593a011d2bb288701a`，40869270 字节）
 
-反编译命令（产物保留在 `~/tmp/jadx-out`）：
+反编译命令（产物应放 `~/tmp/jadx-out`；**2026-10-03 核对时该产物在设备上已缺失**，需要时重跑）：
 
 ```bash
 jadx -d ~/tmp/jadx-out --no-res --threads-count 4 "../AI 语音摘记_16.3.12.apk"

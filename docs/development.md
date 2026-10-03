@@ -45,11 +45,11 @@ gh run list --limit 5
 gh run download <run-id> -n coloros-subtitle-unlock-apk -D ~/tmp/apk-artifact
 ```
 
-产物命名：`artifacts/coloros-subtitle-unlock-v<主>.<次>.apk`（人工命名，沿用 v1.2–v1.11 序列；
+产物命名：`artifacts/coloros-subtitle-unlock-v<主>.<次>.apk`（人工命名，沿用 v1.2–v1.12 序列；
 gradle 侧 `versionCode 1` / `versionName "1.0"` 长期未随产物名改动）。
 
 **编译成功判定**：workflow 绿 + 产出 APK 且含 `assets/xposed_init`、`MainHook`、UI 的 Activity 与布局资源、
-`AndroidManifest.xml` 里的 launcher 与 `xposedsharedprefs`（见 `AGENTS.md` 规则 16）。
+`app/src/main/AndroidManifest.xml` 里的 launcher 与 `xposedsharedprefs`（见 `AGENTS.md` 规则 16）。
 
 ## 本地类型检查（可选，CI 之前的第一道闸）
 
@@ -90,6 +90,11 @@ javac -nowarn -cp "android-35/android.jar:$(ls jars/*.jar | tr '\n' ':')" -d out
 - **native 分析**：`llvm-objdump -d` / `nm -D --defined-only` / `readelf -sW`；
   字符串线索用 `grep -aoE "[ -~]{6,}" <so>`。
 - 产物统一放 `~/tmp/` 并保留。
+
+> `[待确认]` 2026-10-03 核对：`~/tmp/jadx-out`、`~/tmp/jadx-stem`、`~/tmp/jadx-atlas`、`~/tmp/sp.asm`、
+> `~/tmp/af.asm` **在设备上均已缺失**（与 `AGENTS.md` 规则 20 的「保留」要求不符）。
+> 需要追溯证据时，按 `01-reverse-notes.md` / `04-stem-separation.md` 头部的命令重跑
+> （jadx 两个目标 APK + objdump 两个 `.so`）。
 
 ## 真机日志与探针
 

@@ -1,4 +1,4 @@
-# 声音分轨：让任意 App 都能用（追加式白名单）
+# 声音分轨：让任意 App 都能用（设置页手动白名单 + 增量语义，v1.11 起）
 
 > 前置：`04-stem-separation.md`（判定链、白名单与 `mss_music_only`）
 
@@ -65,6 +65,10 @@ prefs 契约与完整规则见 `06-module-ui.md`，此处只讲机制要点：
 (allow system_server ctl_start_prop   (property_service (set)))   ✓
 # atlasservice / mmlistservice：只有 binder/fd/fifo，没有 process signal ⇒ kill 走不通
 ```
+
+`[待确认]` 上面三条策略结论是 2026-09 策略检视的产物。2026-10-03 只**间接**复核了结果
+（`ctl.restart mmlistservice` 确实换了 pid、白名单文件确实写得进去），未重跑策略检视
+（本机无 policy 工具）；「system_server 对这两个进程没有 signal 权限」无法在不改模块的前提下复现。
 
 ## 验证
 

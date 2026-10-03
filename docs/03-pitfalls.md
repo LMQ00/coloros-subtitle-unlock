@@ -11,7 +11,7 @@
 4. **同名内部类**：`com.coloros.accessibilityassistant.subtitle.globalsummary.g0` 与 `subtitle.g0` 都存在，
    写 hook 必须用全限定名 + `$内部类`，否则匹配错类。
 
-## 判定顺序（经验规则，原 `AGENTS.md` §经验规则）
+## 判定顺序（经验规则，v1.12 起由 `AGENTS.md` 移入本文）
 
 - **判定点若在 native，先找「数据/开关」，再考虑 hook**：按
   `.so` 字符串常量 → XML 配置 / `SystemProperties` / 音频参数 → 调用方 的顺序排查。
@@ -46,7 +46,7 @@
     先找**数据与开关**（`.so` 里的字符串常量、XML 配置、`SystemProperties`、音频参数），
     再决定要不要 hook。字符串常量表是最快的线索来源：
     `grep -aoE "[ -~]{6,}" lib.so | grep -i 关键词`。
-12. **无 `aapt` / `apkanalyzer`**：Termux 上没有；读 `AndroidManifest.xml` 用 Python 手写
+12. **无 `aapt` / `apkanalyzer`**：Termux 上没有；读目标 APK 的 `AndroidManifest.xml` 用 Python 手写
     AXML 解析（UTF-16 字符串池 + 属性表），比装 SDK 快得多。
 13. **大 jar 反编译耗时**：`oplus-services.jar` 有 3 个 dex / 28MB，全量 jadx 很慢；
     只查一个类时用 `jadx --single-class <FQCN>`，秒级出结果。

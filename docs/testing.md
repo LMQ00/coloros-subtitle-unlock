@@ -114,7 +114,7 @@ su -c "cat <上面找到的路径>"        # 期望 world-readable：-rw-rw-r--
 | 场景 | 操作 |
 |---|---|
 | 想恢复出厂分轨行为（不需要 root） | 设置页关掉「分轨解锁」开关：写内置原样 + `version 0` ⇒ 内置名单重新生效（见 `06-module-ui.md`） |
-| 想恢复出厂分轨行为（连模块一起） | 删除 `/data/oplus/multimedia/Multimedia_Daemon_Online_List.xml` 并重启（内置名单重新生效） |
+| 想恢复出厂分轨行为（连模块一起） | 删除 `/data/oplus/multimedia/Multimedia_Daemon_Online_List.xml`，再 `setprop ctl.restart mmlistservice`（**不必重启设备**，2026-10-03 实测）或重启设备 |
 | 想停用模块 | LSPosed 取消作用域（`android` 项）后重启 |
 | 分轨面板可用但无分离效果 | 检查是否有人写过 `mss_music_only=0`（`05-stem-any-app.md` §核心教训） |
 | 想回到 v1.10 的「全部 App 自动放行」 | 装回 `artifacts/coloros-subtitle-unlock-v1.10.apk`（同签名可覆盖安装）；或按 `06-module-ui.md` 逐个勾选 |

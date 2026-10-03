@@ -24,15 +24,14 @@
 ## 产物
 
 - 模块源码仓库：<https://github.com/LMQ00/coloros-subtitle-unlock> （public）
-- 已编译 APK：`artifacts/coloros-subtitle-unlock-v1.10.apk`（debug 签名；字幕解锁 + 分轨**全量追加式**
-  白名单扩展（含无条件 bit4 清零）；证书 sha256 `57df9c0d…`，固定签名）
-- **v1.12（修 UI 缺陷：标题对比度 / 状态栏遮挡）**：`artifacts/coloros-subtitle-unlock-v1.12.apk`（debug 签名，证书 sha256 同上）
-- **v1.11（首个带设置页的版本，真机已验证）**：`artifacts/coloros-subtitle-unlock-v1.11.apk`
+- **当前产物 v1.12**（修 UI 缺陷：标题对比度 / 状态栏遮挡，真机复验 7.71:1 / 6.44:1）：
+  `artifacts/coloros-subtitle-unlock-v1.12.apk`（debug 签名，证书 sha256 `57df9c0d…`，固定签名）
+- v1.11（首个带设置页的版本，真机跑通全链路）：`artifacts/coloros-subtitle-unlock-v1.11.apk`
   （体积 5.4 MB —— 引入了 androidx/material，理由与被否决方案见 `06-module-ui.md` §技术选型，
   体积/multidex 影响见 `development.md` §依赖与体积）
-- 历史版本：`artifacts/` 内 v1.2–v1.10（仅追溯用；**v1.2 为旧签名**，与 v1.3+ 不能互相覆盖，
-  详见 `03-pitfalls.md` §16）。v1.5–v1.8 曾走「Atlas/SMC 注入 `mss_music_only=0`」路线，已废弃
-  （见 `05-stem-any-app.md`）。
+- v1.10 及更早：`artifacts/` 内 v1.2–v1.10（仅追溯用；v1.10 = 分轨**全量追加式**白名单，已废弃；
+  **v1.2 为旧签名**，与 v1.3+ 不能互相覆盖，详见 `03-pitfalls.md` §16）。v1.5–v1.8 曾走
+  「Atlas/SMC 注入 `mss_music_only=0`」路线，已废弃（见 `05-stem-any-app.md`）。
 
 ## 下一步
 

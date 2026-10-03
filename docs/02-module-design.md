@@ -20,10 +20,12 @@
 | 1 | `com.coloros.translate.engine.asr.asrclient.h` | `e(int, String)` | 原始云端码入口；丢弃 `3000801/3000802/3000803` |
 | 2 | `com.coloros.translate.engine.asr.s` | `onResultStatus(int,int,String)` | 引擎→监听器总分发；丢弃状态码 `-2017/-2018/-2020` |
 | 3 | `com.coloros.accessibilityassistant.subtitle.g0$d` | `onResultStatus(int,int,String)` | 字幕 WorkManager（防御） |
-| 3 | `com.coloros.accessibilityassistant.subtitle.globalsummary.GlobalAsrWorkManager$e` | `onResultStatus(int,int,String)` | 摘要 WorkManager（防御） |
-| 4 | `com.coloros.accessibilityassistant.subtitle.globalsummary.GlobalAsrDto` | `getMonthlyAvailableDuration()` / `getMonthlyMaxAvailableDuration()` | 返回极大值，UI 显示「剩余充足」 |
-| 5 | `com.coloros.accessibilityassistant.subtitle.g0` | `X()` | 强制返回 false，防止「已达上限」标志导致后续状态码被忽略 |
-| 6 | `subtitle.g0` / `GlobalAsrWorkManager` | `S()` / `x0()` / `T0()` | 兜底：限制到达时的「停止」动作置空 |
+| 4 | `com.coloros.accessibilityassistant.subtitle.globalsummary.GlobalAsrWorkManager$e` | `onResultStatus(int,int,String)` | 摘要 WorkManager（防御） |
+| 5 | `com.coloros.accessibilityassistant.subtitle.globalsummary.GlobalAsrDto` | `getMonthlyAvailableDuration()` / `getMonthlyMaxAvailableDuration()` | 返回极大值，UI 显示「剩余充足」 |
+| 6 | `com.coloros.accessibilityassistant.subtitle.g0` | `X()` | 强制返回 false，防止「已达上限」标志导致后续状态码被忽略 |
+| 7 | `subtitle.g0` / `GlobalAsrWorkManager` | `S()` / `x0()` / `T0()` | 兜底：限制到达时的「停止」动作置空 |
+
+> 全部 hook 回调入口都先查字幕开关（`subtitleUnlock()`），关闭时完全走原逻辑（`06-module-ui.md`）。
 
 ### 诊断日志
 
